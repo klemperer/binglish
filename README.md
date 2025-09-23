@@ -1,7 +1,8 @@
 # binglish：AI桌面英语
 自动更换必应Bing每日壁纸，顺便学个单词（AI生成相关图片、例句及翻译）。
 点亮屏幕，欣赏美景，邂逅知识，聚沙成塔。
-- 必应壁纸来自https://github.com/TimothyYe/bing-wallpaper
+- 图片URL：https://ss.blueforge.org/bing
+- 壁纸来源：https://github.com/TimothyYe/bing-wallpaper
 - 单词难度：CET-4至GRE随机（排除所谓Bad words，列表来自https://github.com/LDNOOBW/List-of-Dirty-Naughty-Obscene-and-Otherwise-Bad-Words）
 - 更新频率：每3小时刷新一次
 - 生成式AI无法保证内容完全准确
