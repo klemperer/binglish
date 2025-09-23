@@ -7,7 +7,8 @@
 - 更新频率：每3小时刷新一次
 - 生成式AI无法保证内容完全准确
 - 适用于Windows10及以上版本，1920x1080分辨率
-<img width="1920" height="1080" alt="wallpaper" src="https://github.com/user-attachments/assets/8b275c41-1511-41f9-991c-befe52d9e53c" />
+<img width="1920" height="1080" alt="wallpaper" src="https://github.com/user-attachments/assets/6baf27da-3aea-4e61-a130-0b93aeefd5ed" />
+
 
 ##编译Build
 
