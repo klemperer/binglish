@@ -6,7 +6,7 @@
 - 单词难度：CET-4至GRE随机（排除所谓Bad words，列表来自https://github.com/LDNOOBW/List-of-Dirty-Naughty-Obscene-and-Otherwise-Bad-Words）
 - 更新频率：每3小时刷新一次
 - 生成式AI无法保证内容完全准确
-- 适用于Windows10及以上版本，1920x1080分辨率
+- 适用于Windows10及以上版本，1920x1080分辨率（后续可能适配其他分辨率，如有需求请在issues中提出）
 <img width="1920" height="1080" alt="wallpaper" src="https://github.com/user-attachments/assets/6baf27da-3aea-4e61-a130-0b93aeefd5ed" />
 
 
