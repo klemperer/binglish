@@ -225,24 +225,14 @@ def check_for_updates(icon):
         latest_version = response.text.strip()
         print(f"[{time.ctime()}] 当前版本: {VERSION}, 最新版本: {latest_version}")
 
-        root = tk.Tk()
-        root.withdraw()
-
         if latest_version != VERSION:
             if messagebox.askyesno("发现新版本", f"有新版本 ({latest_version}) 可用。您想现在更新吗？"):
-                root.destroy()
                 download_and_update(icon)
-            else:
-                root.destroy()
         else:
             messagebox.showinfo("没有更新", "您使用的已是最新版本。")
-            root.destroy()
             
     except requests.exceptions.RequestException as e:
-        root = tk.Tk()
-        root.withdraw()
         messagebox.showerror("检查更新失败", f"检查更新时发生错误: {e}")
-        root.destroy()
         print(f"[{time.ctime()}] 检查更新时发生错误: {e}")
 
 def main():
