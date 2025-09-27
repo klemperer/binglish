@@ -19,20 +19,24 @@
 pip install -r requirements.txt
 ```
 
-## 运行
-
-```Bash
-python binglish.py
-```
-
-## 编译 Build
+## 打包exe（推荐）
 
 ```Bash
 git clone https://github.com/klemperer/binglish/
 cd binglish
-pyinstaller --onefile --windowed -i binglish.ico --add-data "binglish.ico;." --hidden-import "pystray._win32" binglish.py
+pip install pyinstaller
+bundle.bat
 ```
 
+## 运行
+
+打包后在dist目录下找到binglish.exe，或在项目releases中下载已打包的最新版本，双击运行。程序运行后将最小化至右侧任务栏中，可在右键菜单中选择开机自动运行。
+
+也可以在命令行中执行以下命令以运行（不推荐）：
+
+```Bash
+python binglish.py
+```
 ## troubleshooting
 
 如果遇到如下问题：
