@@ -10,7 +10,7 @@
 - 生成式 AI 无法保证内容完全准确
 - 适用于 Windows10 及以上版本，1920x1080 分辨率（后续可能适配其他分辨率，如有需求请在 issues 中提出）
 - 如果壁纸显示效果与下图有明显差别，请尝试调整桌面个性化设置（桌面右键-个性化-背景-适应模式（选填充或适应）
-  <img width="1920" height="1080" alt="wallpaper" src="https://github.com/user-attachments/assets/6baf27da-3aea-4e61-a130-0b93aeefd5ed"
+  <img width="1920" height="1080" alt="wallpaper" src="https://github.com/user-attachments/assets/6baf27da-3aea-4e61-a130-0b93aeefd5ed">
 
 ## 安装依赖
 
