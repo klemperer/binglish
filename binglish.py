@@ -269,12 +269,21 @@ def main():
         print(f"错误：找不到图标文件 '{ICON_FILENAME}'。")
         sys.exit(1)
 
-    menu = (
+    menu_items = [
         item('开机运行', toggle_startup, checked=lambda item: is_startup_enabled()),
-        item('检查更新', lambda: check_for_updates(icon)),
         item('项目网址', open_project_website),
         item('退出', lambda: quit_app(icon))
-    )
+    ]
+
+    if getattr(sys, 'frozen', False):
+        update_item = item('检查更新', lambda: check_for_updates(icon))
+        menu_items.insert(1, update_item)
+        print("检测到以EXE方式运行，已启用“检查更新”功能。")
+    else:
+        print("检测到以PY脚本方式运行，“检查更新”功能已禁用。")
+
+    menu = tuple(menu_items)
+    
     icon = Icon(APP_NAME, image, "Binglish桌面英语", menu)
     
     threading.Thread(target=icon.run, daemon=True).start()
