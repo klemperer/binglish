@@ -37,6 +37,12 @@ bundle.bat
 ```Bash
 python binglish.py
 ```
+
+## 用作ipad锁屏墙纸
+
+在ipad“快捷指令”程序中新建快捷指令（参考https://www.icloud.com/shortcuts/f309786b43b0420f96c59602b8a0361f
+，在ipad safari浏览器中打开），在“快捷指令-自动化”中设置特定时间运行上述快捷指令。该功能未充分测试，可能存在部分ipad机型无法显示墙纸全部内容等现象。
+
 ## troubleshooting
 
 如果遇到如下问题：
