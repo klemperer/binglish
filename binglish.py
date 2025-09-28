@@ -12,7 +12,7 @@ import tkinter as tk
 from tkinter import messagebox
 import subprocess
 
-VERSION = "1.00"
+VERSION = "1.01"
 UPDATE_URL = "https://ss.blueforge.org/bing/version.txt" #最新版本号
 DOWNLOAD_URL = "https://ss.blueforge.org/bing/binglish.exe" #最新版本可执行文件
 IMAGE_URL = f"https://ss.blueforge.org/bing?v={VERSION}"  #图片URL
@@ -45,8 +45,8 @@ def is_startup_enabled():
         return True
     except FileNotFoundError:
         return False
-        
-#切换开机启动选项
+
+#切换开机启动选项        
 def toggle_startup():
     executable_path = get_executable_path()
     if is_startup_enabled():
@@ -121,7 +121,7 @@ def update_wallpaper_job():
         width = gdi32.GetDeviceCaps(dc, 8) 
         height = gdi32.GetDeviceCaps(dc, 10)
         user32.ReleaseDC(None, dc)
-        dynamic_image_url = f"{IMAGE_URL}&w={width}&h={height}" #加上屏幕分辨率参数，将来可能据此返回不同分辨率图片
+        dynamic_image_url = f"{IMAGE_URL}&w={width}&h={height}"
         print(f"[{time.ctime()}] 获取到缩放后的屏幕分辨率: {width}x{height}，将使用URL: {dynamic_image_url}")
     except Exception as e:
         print(f"[{time.ctime()}] 获取屏幕分辨率失败: {e}，将使用默认URL: {IMAGE_URL}")
@@ -153,11 +153,10 @@ def run_scheduler(icon):
     print(f"[{time.ctime()}] 首次壁纸更新成功。")
     print(f"[{time.ctime()}] 已切换到定时更新模式，每 {UPDATE_INTERVAL_SECONDS / 3600:.1f} 小时更新一次。")
 
-    while True:
+    while icon.visible:
         time.sleep(UPDATE_INTERVAL_SECONDS)
-
+        
         if not icon.visible:
-            print(f"[{time.ctime()}] 用户退出程序。")
             break
             
         print(f"\n[{time.ctime()}] 时间到，开始执行定时更新。")
@@ -165,6 +164,7 @@ def run_scheduler(icon):
             update_wallpaper_job()
         else:
             print(f"[{time.ctime()}] 检测到无网络连接，跳过本次更新。")
+    print(f"[{time.ctime()}] 定时更新线程已退出。")
 
 #打开项目网址
 def open_project_website():
@@ -173,6 +173,8 @@ def open_project_website():
         print(f"[{time.ctime()}] 已调用浏览器打开: {PROJECT_URL}")
     except Exception as e:
         print(f"[{time.ctime()}] 打开项目网址失败: {e}")
+
+root = None
 
 #更新新版本程序
 def download_and_update(icon):
@@ -206,56 +208,82 @@ del "%~f0"
             subprocess.Popen(f'"{updater_bat_path}"', shell=True, creationflags=subprocess.CREATE_NO_WINDOW)
             
             print(f"[{time.ctime()}] 程序正在退出以进行更新...")
-            icon.stop()
+            root.after(100, quit_app, icon)
             
         else:
-            messagebox.showerror("下载失败", f"下载新版本失败。状态码: {response.status_code}")
+            root.after(0, lambda: messagebox.showerror("下载失败", f"下载新版本失败。状态码: {response.status_code}"))
             print(f"[{time.ctime()}] 下载新版本失败。状态码: {response.status_code}")
 
     except requests.exceptions.RequestException as e:
-        messagebox.showerror("下载失败", f"下载新版本时发生错误: {e}")
+        root.after(0, lambda: messagebox.showerror("下载失败", f"下载新版本时发生错误: {e}"))
         print(f"[{time.ctime()}] 下载时发生错误: {e}")
 
-#检查更新
-def check_for_updates(icon):
+#检查更新提示框
+def show_update_dialog(result, icon):
+    status, version_or_error = result
+    if status == 'update_available':
+        if messagebox.askyesno("发现新版本", f"有新版本 ({version_or_error}) 可用。您想现在更新吗？"):
+            threading.Thread(target=download_and_update, args=(icon,)).start()
+    elif status == 'no_update':
+        messagebox.showinfo("没有更新", "您使用的已是最新版本。")
+    elif status == 'error':
+        messagebox.showerror("检查更新失败", f"检查更新时发生错误: {version_or_error}")
+
+#检查更新函数
+def perform_network_check(icon):
     print(f"[{time.ctime()}] 正在检查更新...")
     try:
         response = requests.get(UPDATE_URL, timeout=10)
         response.raise_for_status()
         latest_version = response.text.strip()
         print(f"[{time.ctime()}] 当前版本: {VERSION}, 最新版本: {latest_version}")
-
         if latest_version != VERSION:
-            if messagebox.askyesno("发现新版本", f"有新版本 ({latest_version}) 可用。您想现在更新吗？"):
-                download_and_update(icon)
+            result = ('update_available', latest_version)
         else:
-            messagebox.showinfo("没有更新", "您使用的已是最新版本。")
-            
+            result = ('no_update', None)
     except requests.exceptions.RequestException as e:
-        messagebox.showerror("检查更新失败", f"检查更新时发生错误: {e}")
         print(f"[{time.ctime()}] 检查更新时发生错误: {e}")
+        result = ('error', e)
+    
+    root.after(0, show_update_dialog, result, icon)
+
+#检查更新线程
+def check_for_updates(icon):
+    threading.Thread(target=perform_network_check, args=(icon,)).start()
+
+#退出程序
+def quit_app(icon):
+    print("正在退出程序...")
+    icon.stop()
+    root.destroy()
 
 def main():
+    global root
+    root = tk.Tk()
+    root.withdraw()
+
     try:
         icon_path = resource_path(ICON_FILENAME)
         image = Image.open(icon_path)
     except FileNotFoundError:
-        print(f"错误：找不到图标文件 '{ICON_FILENAME}'。请确保它与脚本/EXE在同一目录，并且已正确打包。")
+        print(f"错误：找不到图标文件 '{ICON_FILENAME}'。")
         sys.exit(1)
 
     menu = (
         item('开机运行', toggle_startup, checked=lambda item: is_startup_enabled()),
-        item('检查更新', lambda icon, item: check_for_updates(icon)),
+        item('检查更新', lambda: check_for_updates(icon)),
         item('项目网址', open_project_website),
-        item('退出', lambda icon, item: icon.stop())
+        item('退出', lambda: quit_app(icon))
     )
     icon = Icon(APP_NAME, image, "Binglish桌面英语", menu)
     
+    threading.Thread(target=icon.run, daemon=True).start()
+
     update_thread = threading.Thread(target=run_scheduler, args=(icon,), daemon=True)
     update_thread.start()
     
     print("程序已启动并在后台运行。请在任务栏右下角查找图标。")
-    icon.run()
+    root.mainloop()
 
 if __name__ == "__main__":
     main()
