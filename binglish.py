@@ -14,7 +14,7 @@ import subprocess
 import json
 from playsound3 import playsound 
 
-VERSION = "1.10"
+VERSION = "1.1.0"
 RELEASE_JSON_URL = "https://ss.blueforge.org/bing/release.json" # 包含版本号和更新说明的JSON文件URL
 DOWNLOAD_URL = "https://ss.blueforge.org/bing/binglish.exe" #最新版本可执行文件
 IMAGE_URL = f"https://ss.blueforge.org/bing?v={VERSION}"  #图片URL
