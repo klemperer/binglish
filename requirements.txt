@@ -1,3 +1,4 @@
 requests
 pystray
 Pillow
+playsound3

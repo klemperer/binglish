@@ -6,14 +6,16 @@ import time
 import threading
 import winreg
 import webbrowser
-from PIL import Image
-from pystray import MenuItem as item, Icon
+from PIL import Image, ExifTags
+from pystray import MenuItem as item, Icon, Menu
 import tkinter as tk
 from tkinter import messagebox
 import subprocess
+import json
+from playsound3 import playsound 
 
-VERSION = "1.01"
-UPDATE_URL = "https://ss.blueforge.org/bing/version.txt" #最新版本号
+VERSION = "1.10"
+RELEASE_JSON_URL = "https://ss.blueforge.org/bing/release.json" # 包含版本号和更新说明的JSON文件URL
 DOWNLOAD_URL = "https://ss.blueforge.org/bing/binglish.exe" #最新版本可执行文件
 IMAGE_URL = f"https://ss.blueforge.org/bing?v={VERSION}"  #图片URL
 
@@ -24,6 +26,15 @@ ICON_FILENAME = "binglish.ico"
 DOWNLOAD_RETRY_INTERVAL_SECONDS = 30
 INTERNET_CHECK_INTERVAL_SECONDS = 60
 PROJECT_URL = "https://github.com/klemperer/binglish" #项目网址
+
+bing_word = None # 单词本身
+bing_url = None  # 单词详情页URL
+bing_mp3 = None  # 单词发音MP3文件URL
+
+# 用于持有 pystray 图标对象的引用
+root = None
+icon = None
+
 
 def resource_path(relative_path):
     try:
@@ -107,8 +118,32 @@ def check_internet_connection():
     except requests.ConnectionError:
         return False
 
+# 动态构建菜单项
+def build_menu_items():
+    menu_items = []
+
+    if bing_url:
+        menu_items.append(item(f'查单词 {bing_word}', lambda: webbrowser.open(bing_url)))
+    
+    if bing_mp3:
+        menu_items.append(item(f'读单词 {bing_word}', lambda: threading.Thread(target=play_word_sound, daemon=True).start()))
+
+    if bing_url or bing_mp3:
+        menu_items.append(Menu.SEPARATOR)
+
+    menu_items.append(item('开机运行', toggle_startup, checked=lambda item: is_startup_enabled()))
+
+    if getattr(sys, 'frozen', False):
+        menu_items.append(item('检查更新', lambda: check_for_updates(icon)))
+    
+    menu_items.append(item('项目网址', open_project_website))
+    menu_items.append(item('退出', lambda: quit_app(icon)))
+    
+    return tuple(menu_items)
+
 #更新墙纸任务
 def update_wallpaper_job():
+    global icon
     base_directory = os.path.dirname(get_executable_path())
     save_filename = "wallpaper.jpg"
     full_save_path = os.path.join(base_directory, save_filename)
@@ -127,7 +162,33 @@ def update_wallpaper_job():
         print(f"[{time.ctime()}] 获取屏幕分辨率失败: {e}，将使用默认URL: {IMAGE_URL}")
         dynamic_image_url = IMAGE_URL
     
-    if download_image(dynamic_image_url, full_save_path):
+    image_downloaded = download_image(dynamic_image_url, full_save_path)
+    if image_downloaded:
+        global bing_word, bing_url, bing_mp3
+        try:
+            print(f"[{time.ctime()}] 正在从 {full_save_path} 提取EXIF信息...")
+            with Image.open(full_save_path) as img:
+                exif_data = img._getexif()
+                if exif_data:
+                    bing_word = exif_data.get(315, "").strip()
+                    bing_url = exif_data.get(270, "").strip()
+                    bing_mp3 = exif_data.get(269, "").strip()
+                    
+                    print(f"[{time.ctime()}] EXIF信息提取成功:")
+                    print(f"    - Artist (bing_word): {bing_word}")
+                    print(f"    - ImageDescription (bing_url): {bing_url}")
+                    print(f"    - DocumentName (bing_mp3): {bing_mp3}")
+                else:
+                    print(f"[{time.ctime()}] 图片中未找到EXIF信息，清空旧数据。")
+                    bing_word, bing_url, bing_mp3 = None, None, None
+        except Exception as e:
+            print(f"[{time.ctime()}] 提取EXIF信息时发生错误: {e}")
+            bing_word, bing_url, bing_mp3 = None, None, None
+        
+        if icon:
+            print(f"[{time.ctime()}] 正在更新右键菜单...")
+            icon.menu = Menu(*build_menu_items())
+
         if set_as_wallpaper(full_save_path):
             return True 
     
@@ -174,8 +235,6 @@ def open_project_website():
     except Exception as e:
         print(f"[{time.ctime()}] 打开项目网址失败: {e}")
 
-root = None
-
 #更新新版本程序
 def download_and_update(icon):
     new_exe_path = os.path.join(os.path.dirname(get_executable_path()), "bing_new.exe")
@@ -220,9 +279,10 @@ del "%~f0"
 
 #检查更新提示框
 def show_update_dialog(result, icon):
-    status, version_or_error = result
+    status, version_or_error, releasenotes = result
     if status == 'update_available':
-        if messagebox.askyesno("发现新版本", f"有新版本 ({version_or_error}) 可用。您想现在更新吗？"):
+        message = f"有新版本 ({version_or_error}) 可用。\n\n更新说明:\n{releasenotes}\n\n您想现在更新吗？"
+        if messagebox.askyesno("发现新版本", message):
             threading.Thread(target=download_and_update, args=(icon,)).start()
     elif status == 'no_update':
         messagebox.showinfo("没有更新", "您使用的已是最新版本。")
@@ -233,17 +293,25 @@ def show_update_dialog(result, icon):
 def perform_network_check(icon):
     print(f"[{time.ctime()}] 正在检查更新...")
     try:
-        response = requests.get(UPDATE_URL, timeout=10)
+        response = requests.get(RELEASE_JSON_URL, timeout=20)
         response.raise_for_status()
-        latest_version = response.text.strip()
+        release_info = response.json()
+        latest_version = release_info.get("version")
+        releasenotes = release_info.get("releasenotes")
+        
         print(f"[{time.ctime()}] 当前版本: {VERSION}, 最新版本: {latest_version}")
-        if latest_version != VERSION:
-            result = ('update_available', latest_version)
+        
+        if latest_version and latest_version != VERSION:
+            result = ('update_available', latest_version, releasenotes)
         else:
-            result = ('no_update', None)
+            result = ('no_update', None, None)
+            
     except requests.exceptions.RequestException as e:
         print(f"[{time.ctime()}] 检查更新时发生错误: {e}")
-        result = ('error', e)
+        result = ('error', e, None)
+    except json.JSONDecodeError as e:
+        print(f"[{time.ctime()}] 解析更新信息时发生错误: {e}")
+        result = ('error', f"无法解析更新文件: {e}", None)
     
     root.after(0, show_update_dialog, result, icon)
 
@@ -251,14 +319,27 @@ def perform_network_check(icon):
 def check_for_updates(icon):
     threading.Thread(target=perform_network_check, args=(icon,)).start()
 
+#播放单词相关语音
+def play_word_sound():
+    if bing_mp3:
+        try:
+            print(f"[{time.ctime()}] 正在播放在线音频: {bing_mp3}")
+            playsound(bing_mp3)
+            print(f"[{time.ctime()}] 音频播放完毕。")
+        except Exception as e:
+            print(f"[{time.ctime()}] 播放音频时发生错误: {e}")
+            root.after(0, lambda: messagebox.showerror("播放失败", f"无法播放在线音频：{e}"))
+
 #退出程序
 def quit_app(icon):
     print("正在退出程序...")
-    icon.stop()
-    root.destroy()
+    if icon:
+        icon.stop()
+    if root:
+        root.destroy()
 
 def main():
-    global root
+    global root, icon
     root = tk.Tk()
     root.withdraw()
 
@@ -268,23 +349,9 @@ def main():
     except FileNotFoundError:
         print(f"错误：找不到图标文件 '{ICON_FILENAME}'。")
         sys.exit(1)
-
-    menu_items = [
-        item('开机运行', toggle_startup, checked=lambda item: is_startup_enabled()),
-        item('项目网址', open_project_website),
-        item('退出', lambda: quit_app(icon))
-    ]
-
-    if getattr(sys, 'frozen', False):
-        update_item = item('检查更新', lambda: check_for_updates(icon))
-        menu_items.insert(1, update_item)
-        print("检测到以EXE方式运行，已启用“检查更新”功能。")
-    else:
-        print("检测到以PY脚本方式运行，“检查更新”功能已禁用。")
-
-    menu = tuple(menu_items)
     
-    icon = Icon(APP_NAME, image, "Binglish桌面英语", menu)
+    initial_menu = Menu(*build_menu_items())
+    icon = Icon(APP_NAME, image, "Binglish桌面英语", menu=initial_menu)
     
     threading.Thread(target=icon.run, daemon=True).start()
 
