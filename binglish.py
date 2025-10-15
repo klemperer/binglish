@@ -14,7 +14,7 @@ import subprocess
 import json
 from playsound3 import playsound 
 
-VERSION = "1.1.0"
+VERSION = "1.1.1"
 RELEASE_JSON_URL = "https://ss.blueforge.org/bing/release.json" # 包含版本号和更新说明的JSON文件URL
 DOWNLOAD_URL = "https://ss.blueforge.org/bing/binglish.exe" #最新版本可执行文件
 IMAGE_URL = f"https://ss.blueforge.org/bing?v={VERSION}"  #图片URL
@@ -131,6 +131,9 @@ def build_menu_items():
     if bing_url or bing_mp3:
         menu_items.append(Menu.SEPARATOR)
 
+    menu_items.append(item('随机复习', lambda: threading.Thread(target=update_wallpaper_job, args=(True,), daemon=True).start()))
+    menu_items.append(Menu.SEPARATOR)
+
     menu_items.append(item('开机运行', toggle_startup, checked=lambda item: is_startup_enabled()))
 
     if getattr(sys, 'frozen', False):
@@ -142,7 +145,7 @@ def build_menu_items():
     return tuple(menu_items)
 
 #更新墙纸任务
-def update_wallpaper_job():
+def update_wallpaper_job(is_random=False): # is_random 参数用于判断是否为随机复习
     global icon
     base_directory = os.path.dirname(get_executable_path())
     save_filename = "wallpaper.jpg"
@@ -157,11 +160,17 @@ def update_wallpaper_job():
         height = gdi32.GetDeviceCaps(dc, 10)
         user32.ReleaseDC(None, dc)
         dynamic_image_url = f"{IMAGE_URL}&w={width}&h={height}"
-        print(f"[{time.ctime()}] 获取到缩放后的屏幕分辨率: {width}x{height}，将使用URL: {dynamic_image_url}")
     except Exception as e:
         print(f"[{time.ctime()}] 获取屏幕分辨率失败: {e}，将使用默认URL: {IMAGE_URL}")
         dynamic_image_url = IMAGE_URL
     
+    # 如果是随机复习，则在URL中添加random参数
+    if is_random:
+        dynamic_image_url += "&random"
+        print(f"[{time.ctime()}] 随机复习模式，将使用URL: {dynamic_image_url}")
+    else:
+        print(f"[{time.ctime()}] 正常循环模式，将使用URL: {dynamic_image_url}")
+
     image_downloaded = download_image(dynamic_image_url, full_save_path)
     if image_downloaded:
         global bing_word, bing_url, bing_mp3
