@@ -1,6 +1,6 @@
 # binglish：AI 桌面英语
 
-自动更换必应 Bing 每日壁纸，顺便学个单词（AI 生成相关图片、例句及翻译）。
+自动更换必应 Bing 每日壁纸，顺便学个单词（AI 生成相关图片、例句、语音解析等）。
 点亮屏幕，欣赏美景，邂逅知识，聚沙成塔。
 
 - 图片 URL：https://ss.blueforge.org/bing
@@ -8,8 +8,8 @@
 - 单词难度：CET-4 至 GRE 随机（排除所谓 Bad words，列表来自https://github.com/LDNOOBW/List-of-Dirty-Naughty-Obscene-and-Otherwise-Bad-Words）
 - 更新频率：每 3 小时刷新一次
 - 生成式 AI 无法保证内容完全准确
-- 适用于 Windows10 及以上版本，1920x1080 分辨率（后续可能适配其他分辨率，如有需求请在 issues 中提出）
-- 如果壁纸显示效果与下图有明显差别，请尝试调整桌面个性化设置（桌面右键-个性化-背景-适应模式（选填充或适应）
+- 适用于 Windows10 及以上版本，1920x1080 分辨率（其他分辨率暂未经测试）
+- 国内部分城市因网络问题，可能无法正常下载壁纸
   <img width="1920" height="1080" alt="wallpaper" src="https://github.com/user-attachments/assets/6baf27da-3aea-4e61-a130-0b93aeefd5ed">
 
 ## 安装依赖
