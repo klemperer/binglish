@@ -16,7 +16,7 @@ from playsound3 import playsound
 import shutil 
 from datetime import datetime 
 
-VERSION = "1.1.1"
+VERSION = "1.1.2"
 RELEASE_JSON_URL = "https://ss.blueforge.org/bing/release.json" # 包含版本号和更新说明的JSON文件URL
 DOWNLOAD_URL = "https://ss.blueforge.org/bing/binglish.exe" #最新版本可执行文件
 IMAGE_URL = f"https://ss.blueforge.org/bing?v={VERSION}"  #图片URL
