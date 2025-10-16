@@ -18,6 +18,7 @@ VERSION = "1.1.1"
 RELEASE_JSON_URL = "https://ss.blueforge.org/bing/release.json" # 包含版本号和更新说明的JSON文件URL
 DOWNLOAD_URL = "https://ss.blueforge.org/bing/binglish.exe" #最新版本可执行文件
 IMAGE_URL = f"https://ss.blueforge.org/bing?v={VERSION}"  #图片URL
+IMAGEBING_URL = f"https://bing.biturl.top/"  #BING图片URL
 
 UPDATE_INTERVAL_SECONDS = 3 * 60 * 60 #每3小时更新图片
 APP_NAME = "Binglish"
@@ -30,6 +31,7 @@ PROJECT_URL = "https://github.com/klemperer/binglish" #项目网址
 bing_word = None # 单词本身
 bing_url = None  # 单词详情页URL
 bing_mp3 = None  # 单词发音MP3文件URL
+bing_copyright_link = None  # 图片描述链接
 
 # 用于持有 pystray 图标对象的引用
 root = None
@@ -114,6 +116,15 @@ def set_as_wallpaper(image_path):
 def check_internet_connection():
     try:
         requests.get("https://www.bing.com", timeout=5)
+
+        response = requests.get(IMAGEBING_URL, timeout=5)
+        if response.status_code == 200:
+            # 解析json数据
+            data = response.json()
+            if 'copyright_link' in data:
+                global bing_copyright_link
+                bing_copyright_link = data['copyright_link']
+
         return True
     except requests.ConnectionError:
         return False
@@ -131,6 +142,9 @@ def build_menu_items():
     if bing_url or bing_mp3:
         menu_items.append(Menu.SEPARATOR)
 
+    if bing_copyright_link:
+        menu_items.append(item(f'图片描述', lambda: webbrowser.open(bing_copyright_link)))
+    
     menu_items.append(item('随机复习', lambda: threading.Thread(target=update_wallpaper_job, args=(True,), daemon=True).start()))
     menu_items.append(Menu.SEPARATOR)
 
