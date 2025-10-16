@@ -13,6 +13,8 @@ from tkinter import messagebox
 import subprocess
 import json
 from playsound3 import playsound 
+import shutil 
+from datetime import datetime 
 
 VERSION = "1.1.1"
 RELEASE_JSON_URL = "https://ss.blueforge.org/bing/release.json" # 包含版本号和更新说明的JSON文件URL
@@ -132,6 +134,11 @@ def build_menu_items():
         menu_items.append(Menu.SEPARATOR)
 
     menu_items.append(item('随机复习', lambda: threading.Thread(target=update_wallpaper_job, args=(True,), daemon=True).start()))
+
+    wallpaper_path = os.path.join(os.path.dirname(get_executable_path()), "wallpaper.jpg")
+    if os.path.exists(wallpaper_path):
+        menu_items.append(item('复制保存', copy_and_save_wallpaper))
+
     menu_items.append(Menu.SEPARATOR)
 
     menu_items.append(item('开机运行', toggle_startup, checked=lambda item: is_startup_enabled()))
@@ -244,6 +251,27 @@ def open_project_website():
     except Exception as e:
         print(f"[{time.ctime()}] 打开项目网址失败: {e}")
 
+# 复制并保存当前壁纸
+def copy_and_save_wallpaper():
+    try:
+        base_directory = os.path.dirname(get_executable_path())
+        source_path = os.path.join(base_directory, "wallpaper.jpg")
+        
+        timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
+        destination_filename = f"{timestamp}.jpg"
+        destination_path = os.path.join(base_directory, destination_filename)
+        
+        shutil.copy(source_path, destination_path)
+        print(f"[{time.ctime()}] 壁纸已从 {source_path} 复制到 {destination_path}")
+        
+        root.after(0, lambda: messagebox.showinfo("操作成功", "壁纸已成功复制至程序所在目录"))
+    except FileNotFoundError:
+        print(f"[{time.ctime()}] 复制操作失败: wallpaper.jpg 不存在。")
+        root.after(0, lambda: messagebox.showerror("操作失败", "未找到 wallpaper.jpg 文件。"))
+    except Exception as e:
+        print(f"[{time.ctime()}] 复制壁纸时发生错误: {e}")
+        root.after(0, lambda: messagebox.showerror("操作失败", f"复制文件时出错: {e}"))
+
 #更新新版本程序
 def download_and_update(icon):
     new_exe_path = os.path.join(os.path.dirname(get_executable_path()), "bing_new.exe")
@@ -290,7 +318,7 @@ del "%~f0"
 def show_update_dialog(result, icon):
     status, version_or_error, releasenotes = result
     if status == 'update_available':
-        message = f"有新版本 ({version_or_error}) 可用。\n\n更新说明:\n{releasenotes}\n\n您想现在更新吗？"
+        message = f"有新版本 ({version_or_error}) 可用。\n\n更新说明:\n{releasenotes}\n\n您想现在更新吗？\n点击确定后程序将在后台更新。"
         if messagebox.askyesno("发现新版本", message):
             threading.Thread(target=download_and_update, args=(icon,)).start()
     elif status == 'no_update':
