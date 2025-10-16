@@ -12,16 +12,14 @@
 - 国内部分城市因网络问题，可能无法正常下载壁纸
   <img width="1920" height="1080" alt="wallpaper" src="https://github.com/user-attachments/assets/6baf27da-3aea-4e61-a130-0b93aeefd5ed">
 
-## 安装依赖
+## 下载已编译程序
+
+[Github releases](https://github.com/klemperer/binglish/releases/download/latest/binglish.exe) 或者 [备用下载地址](https://ss.blueforge.org/bing/binglish.exe)
+
+## 或 自行打包
 
 ```Bash
-
 pip install -r requirements.txt
-```
-
-## 打包exe（推荐）
-
-```Bash
 git clone https://github.com/klemperer/binglish/
 cd binglish
 pip install pyinstaller
@@ -30,7 +28,7 @@ bundle.bat
 
 ## 运行
 
-打包后在dist目录下找到binglish.exe，或在项目releases中下载已打包的最新版本，双击运行。程序运行后将最小化至右侧任务栏中，可在右键菜单中选择开机自动运行。
+双击binglish.exe（如自行打包，可在项目下dist目录中找到该文件）即可运行，无需安装。程序运行后将最小化至右侧任务栏中，可在右键菜单中选择开机自动运行。
 
 也可以在命令行中执行以下命令以运行（不推荐，“检查更新”功能不可用）：
 
