@@ -19,9 +19,9 @@
 ## 或 自行打包
 
 ```Bash
-pip install -r requirements.txt
 git clone https://github.com/klemperer/binglish/
 cd binglish
+pip install -r requirements.txt
 pip install pyinstaller
 bundle.bat
 ```

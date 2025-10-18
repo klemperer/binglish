@@ -6,7 +6,8 @@ import time
 import threading
 import winreg
 import webbrowser
-from PIL import Image, ExifTags
+from PIL import Image
+import exifread
 from pystray import MenuItem as item, Icon, Menu
 import tkinter as tk
 from tkinter import messagebox
@@ -32,6 +33,8 @@ PROJECT_URL = "https://github.com/klemperer/binglish" #项目网址
 bing_word = None # 单词本身
 bing_url = None  # 单词详情页URL
 bing_mp3 = None  # 单词发音MP3文件URL
+bing_copyright = None # 图片版权文本
+bing_copyright_url = None # 图片版权链接
 
 # 用于持有 pystray 图标对象的引用
 root = None
@@ -120,6 +123,31 @@ def check_internet_connection():
     except requests.ConnectionError:
         return False
 
+# 在主线程中显示版权信息弹窗
+def show_copyright_info():
+    root.after(0, _show_copyright_dialog_thread_safe)
+
+# 实际显示弹窗函数
+def _show_copyright_dialog_thread_safe():
+    if bing_copyright and bing_copyright_url:
+        if messagebox.askyesno("图片信息", f"{bing_copyright}\n\n查看相关信息？"):
+            webbrowser.open(bing_copyright_url)
+    elif bing_copyright:
+        messagebox.showinfo("图片信息", bing_copyright)
+
+# 显示“关于”弹窗
+def show_about_dialog():
+    root.after(0, _show_about_dialog_thread_safe)
+
+def _show_about_dialog_thread_safe():
+    title = "关于 Binglish"
+    message = (
+        f"Binglish桌面英语 {VERSION}\n"
+        f"{PROJECT_URL}\n"
+        "QQ交流群 868049386"
+    )
+    messagebox.showinfo(title, message)
+
 # 动态构建菜单项
 def build_menu_items():
     menu_items = []
@@ -129,15 +157,18 @@ def build_menu_items():
     
     if bing_mp3:
         menu_items.append(item(f'读单词 {bing_word}', lambda: threading.Thread(target=play_word_sound, daemon=True).start()))
-
+    
     if bing_url or bing_mp3:
         menu_items.append(Menu.SEPARATOR)
 
     menu_items.append(item('随机复习', lambda: threading.Thread(target=update_wallpaper_job, args=(True,), daemon=True).start()))
-
+    
     wallpaper_path = os.path.join(os.path.dirname(get_executable_path()), "wallpaper.jpg")
     if os.path.exists(wallpaper_path):
         menu_items.append(item('复制保存', copy_and_save_wallpaper))
+
+    if bing_copyright:
+        menu_items.append(item('图片信息', show_copyright_info))
 
     menu_items.append(Menu.SEPARATOR)
 
@@ -146,14 +177,19 @@ def build_menu_items():
     if getattr(sys, 'frozen', False):
         menu_items.append(item('检查更新', lambda: check_for_updates(icon)))
     
-    menu_items.append(item('项目网址', open_project_website))
+    menu_items.append(item('关于', show_about_dialog)) 
     menu_items.append(item('退出', lambda: quit_app(icon)))
     
     return tuple(menu_items)
 
 #更新墙纸任务
 def update_wallpaper_job(is_random=False): # is_random 参数用于判断是否为随机复习
-    global icon
+    global icon, bing_word, bing_url, bing_mp3, bing_copyright, bing_copyright_url
+    bing_word, bing_url, bing_mp3, bing_copyright, bing_copyright_url = None, None, None, None, None
+    if icon:
+        print(f"[{time.ctime()}] 正在更新右键菜单（清空状态）。")
+        icon.menu = Menu(*build_menu_items())
+
     base_directory = os.path.dirname(get_executable_path())
     save_filename = "wallpaper.jpg"
     full_save_path = os.path.join(base_directory, save_filename)
@@ -180,26 +216,47 @@ def update_wallpaper_job(is_random=False): # is_random 参数用于判断是否�
 
     image_downloaded = download_image(dynamic_image_url, full_save_path)
     if image_downloaded:
-        global bing_word, bing_url, bing_mp3
         try:
-            print(f"[{time.ctime()}] 正在从 {full_save_path} 提取EXIF信息...")
-            with Image.open(full_save_path) as img:
-                exif_data = img._getexif()
-                if exif_data:
-                    bing_word = exif_data.get(315, "").strip()
-                    bing_url = exif_data.get(270, "").strip()
-                    bing_mp3 = exif_data.get(269, "").strip()
-                    
-                    print(f"[{time.ctime()}] EXIF信息提取成功:")
-                    print(f"    - Artist (bing_word): {bing_word}")
-                    print(f"    - ImageDescription (bing_url): {bing_url}")
-                    print(f"    - DocumentName (bing_mp3): {bing_mp3}")
+            print(f"[{time.ctime()}] 正在从 {full_save_path} 提取EXIF信息 (使用 exifread)...")
+            
+            with open(full_save_path, 'rb') as f:
+                tags = exifread.process_file(f) 
+
+            if tags:
+                bing_word = str(tags.get('Image Artist', '')).strip()
+                
+                bing_url = str(tags.get('Image ImageDescription', '')).strip()
+                
+                bing_mp3 = str(tags.get('Image DocumentName', '')).strip()
+                
+                copyright_info = str(tags.get('Image Copyright', '')).strip()
+
+                if copyright_info:
+                    if "||" in copyright_info:
+                        parts = copyright_info.split("||", 1)
+                        bing_copyright = parts[0].strip()
+                        bing_copyright_url = parts[1].strip()
+                    else:
+                        bing_copyright = copyright_info
+                        bing_copyright_url = None
                 else:
-                    print(f"[{time.ctime()}] 图片中未找到EXIF信息，清空旧数据。")
-                    bing_word, bing_url, bing_mp3 = None, None, None
+                    bing_copyright = None
+                    bing_copyright_url = None
+                
+                print(f"[{time.ctime()}] EXIF信息提取成功:")
+                print(f"    - Artist (bing_word): {bing_word}")
+                print(f"    - ImageDescription (bing_url): {bing_url}")
+                print(f"    - DocumentName (bing_mp3): {bing_mp3}")
+                print(f"    - Copyright (bing_copyright): {bing_copyright}")
+                print(f"    - Copyright URL (bing_copyright_url): {bing_copyright_url}")
+
+            else:
+                print(f"[{time.ctime()}] 图片中未找到EXIF信息，清空旧数据。")
+                bing_word, bing_url, bing_mp3, bing_copyright, bing_copyright_url = None, None, None, None, None
+
         except Exception as e:
             print(f"[{time.ctime()}] 提取EXIF信息时发生错误: {e}")
-            bing_word, bing_url, bing_mp3 = None, None, None
+            bing_word, bing_url, bing_mp3, bing_copyright, bing_copyright_url = None, None, None, None, None
         
         if icon:
             print(f"[{time.ctime()}] 正在更新右键菜单...")
@@ -242,14 +299,6 @@ def run_scheduler(icon):
         else:
             print(f"[{time.ctime()}] 检测到无网络连接，跳过本次更新。")
     print(f"[{time.ctime()}] 定时更新线程已退出。")
-
-#打开项目网址
-def open_project_website():
-    try:
-        webbrowser.open(PROJECT_URL)
-        print(f"[{time.ctime()}] 已调用浏览器打开: {PROJECT_URL}")
-    except Exception as e:
-        print(f"[{time.ctime()}] 打开项目网址失败: {e}")
 
 # 复制并保存当前壁纸
 def copy_and_save_wallpaper():
@@ -344,7 +393,7 @@ def perform_network_check(icon):
             result = ('no_update', None, None)
             
     except requests.exceptions.RequestException as e:
-        print(f"[{time.ctime()}] 检查更新时发生错误: {e}")
+        print(f"[{time.ctime()}] F检查更新时发生错误: {e}")
         result = ('error', e, None)
     except json.JSONDecodeError as e:
         print(f"[{time.ctime()}] 解析更新信息时发生错误: {e}")
