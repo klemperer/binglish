@@ -48,33 +48,15 @@ python binglish.py
 在ipad“快捷指令”程序中新建快捷指令（参考https://www.icloud.com/shortcuts/f309786b43b0420f96c59602b8a0361f
 ，在ipad safari浏览器中打开），在“快捷指令-自动化”中设置特定时间运行上述快捷指令。该功能未充分测试，可能存在部分ipad机型无法显示墙纸全部内容等现象。
 
-## troubleshooting
+## 偶发问题
 
-如果遇到如下问题：
-
-```
-D:\Repository\binglish>python binglish.py 
-
-Traceback (most recent call last):
-
-  File "D:\Repository\binglish\binglish.py", line 11, in <module>
-
-    import tkinter as tk
-
-ModuleNotFoundError: No module named 'tkinter'
-```
-
-通常情况下是由于没有正确安装 tkinter 导致的。当您安装完整的 Python 解释器时，tkinter 会随之一起安装。但是，如果您使用的是自定义的 Python 版本，或者在安装时选择了最小化安装选项，那么 tkinter 可能没有被包含。
-要解决这个问题，您需要单独安装 tkinter。您可以使用以下命令来安装 tkinter：
-
+#### ModuleNotFoundError: No module named 'tkinter'
+直接运行binglish.py可能会遇到该问题。通常情况下是由于没有正确安装 tkinter 导致的。当您安装完整的 Python 解释器时，tkinter 会随之一起安装。但是，如果您使用的是自定义的 Python 版本，或者在安装时选择了最小化安装选项，那么 tkinter 可能没有被包含。要解决这个问题，您需要单独安装 tkinter。您可以使用以下命令来安装 tkinter：
 ```Bash
 pip install tk
 ```
+#### 壁纸显示不正常（被过度拉伸或压扁）
+尝试以下解决方案：桌面点击右键、选择“个性化”、选择“背景”、选择“填充”或“适应”
 
-如果您使用的是 Windows，并且已经安装了 Python，那么您可能需要以管理员身份运行命令提示符，然后使用以下命令来安装 tkinter：
-
-```Bash
-python -m pip install tk
-```
-
-安装完成后，您应该能够正常运行 binglish.py 脚本了。
+#### 程序不能正常运行（黑框闪退）
+尝试将程序移动至非中文路径的目录下再双击运行。
