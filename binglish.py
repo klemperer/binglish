@@ -16,11 +16,15 @@ import json
 from playsound3 import playsound 
 import shutil 
 from datetime import datetime 
+import multiprocessing
+import qrcode
+from PIL import ImageTk
 
-VERSION = "1.1.2"
+VERSION = "1.2.0"
 RELEASE_JSON_URL = "https://ss.blueforge.org/bing/release.json" # 包含版本号和更新说明的JSON文件URL
 DOWNLOAD_URL = "https://ss.blueforge.org/bing/binglish.exe" #最新版本可执行文件
 IMAGE_URL = f"https://ss.blueforge.org/bing?v={VERSION}"  #图片URL
+MUSIC_JSON_URL = "https://ss.blueforge.org/bing/songoftheday.json" # 每日一歌JSON
 
 UPDATE_INTERVAL_SECONDS = 3 * 60 * 60 #每3小时更新图片
 APP_NAME = "Binglish"
@@ -35,6 +39,13 @@ bing_url = None  # 单词详情页URL
 bing_mp3 = None  # 单词发音MP3文件URL
 bing_copyright = None # 图片版权文本
 bing_copyright_url = None # 图片版权链接
+bing_id = None # 图片唯一ID，用于分享
+bing_music_name = None # 每日一歌名称
+bing_music_url = None  # 每日一歌MP3 URL
+bing_music_desc = None # 每日一歌描述
+is_music_playing = False # 音乐是否正在播放
+music_process = None # 音乐播放进程
+music_check_timer = None # 用于存储音乐检查计时器
 
 # 用于持有 pystray 图标对象的引用
 root = None
@@ -144,9 +155,189 @@ def _show_about_dialog_thread_safe():
     message = (
         f"Binglish桌面英语 {VERSION}\n"
         f"{PROJECT_URL}\n"
-        "QQ交流群 868049386"
     )
     messagebox.showinfo(title, message)
+
+# 显示“Song of the Day”描述弹窗
+def show_music_description_dialog():
+    root.after(0, _show_music_description_dialog_thread_safe)
+
+# 实际显示弹窗函数
+def _show_music_description_dialog_thread_safe():
+    if not bing_music_desc:
+        if bing_music_name: 
+             messagebox.showinfo(f"歌曲: {bing_music_name}", "没有可用的歌曲描述。")
+        return
+
+    try:
+        music_window = tk.Toplevel(root)
+        music_window.title(f"歌曲: {bing_music_name}")
+        music_window.resizable(False, False)
+        music_window.attributes("-topmost", True) 
+
+        desc_font = ("TkDefaultFont", 15) 
+        button_font = ("TkDefaultFont", 12)
+
+        label_desc = tk.Message(music_window, text=bing_music_desc, width=600, justify="left", font=desc_font)
+        label_desc.pack(padx=10, pady=(10, 5)) 
+
+        button_frame = tk.Frame(music_window)
+        button_frame.pack(pady=(5, 10), padx=10, fill="x")
+
+        def play_and_close():
+            print(f"[{time.ctime()}] 用户从歌曲信息弹窗点击播放。")
+            music_window.destroy() 
+
+            global is_music_playing
+            if not is_music_playing:
+                toggle_music_playback() 
+
+        def cancel_and_close():
+            music_window.destroy()
+
+        btn_play = tk.Button(button_frame, text="播放", command=play_and_close, width=10, font=button_font)
+        btn_play.pack(side="left", expand=True, fill="x", padx=(5, 5))
+
+        btn_cancel = tk.Button(button_frame, text="取消", command=cancel_and_close, width=10, font=button_font)
+        btn_cancel.pack(side="right", expand=True, fill="x", padx=(5, 5))
+
+        music_window.update_idletasks()
+        x = root.winfo_screenwidth() // 2 - music_window.winfo_width() // 2
+        y = root.winfo_screenheight() // 2 - music_window.winfo_height() // 2
+        music_window.geometry(f"+{x}+{y}")
+        
+        music_window.focus_set()
+        music_window.grab_set() 
+        music_window.wait_window() 
+    
+    except Exception as e:
+        print(f"[{time.ctime()}] 显示自定义音乐弹窗时发生错误: {e}")
+        messagebox.showerror("弹窗错误", f"无法显示歌曲信息弹窗: {e}")
+
+# 在主线程中显示二维码弹窗
+def show_share_qr():
+    root.after(0, _show_share_qr_thread_safe)
+
+# 实际显示二维码弹窗函数
+def _show_share_qr_thread_safe():
+    global bing_id
+    if not bing_id:
+        messagebox.showerror("错误", "未找到图片ID，无法分享。")
+        return
+    
+    share_url = f"https://ss.blueforge.org/bing/s/{bing_id}.htm"
+    print(f"[{time.ctime()}] 生成分享二维码: {share_url}")
+    
+    try:
+        qr_window = tk.Toplevel(root)
+        qr_window.title("分享此壁纸")
+        qr_window.resizable(False, False)
+        
+        qr = qrcode.QRCode(
+            version=1,
+            error_correction=qrcode.constants.ERROR_CORRECT_L,
+            box_size=10,
+            border=4,
+        )
+        qr.add_data(share_url)
+        qr.make(fit=True)
+        
+        img = qr.make_image(fill_color="black", back_color="white")
+        
+        qr_window.tk_image = ImageTk.PhotoImage(img)
+        
+        label_image = tk.Label(qr_window, image=qr_window.tk_image)
+        label_image.pack(padx=10, pady=10)
+        
+        label_text = tk.Label(qr_window, text="请使用手机(系统相机、浏览器等)扫一扫以分享")
+        label_text.pack(pady=5)
+        
+        qr_window.update_idletasks()
+        x = root.winfo_screenwidth() // 2 - qr_window.winfo_width() // 2
+        y = root.winfo_screenheight() // 2 - qr_window.winfo_height() // 2
+        qr_window.geometry(f"+{x}+{y}")
+        
+        qr_window.focus_set() 
+        
+    except Exception as e:
+        print(f"[{time.ctime()}] 生成二维码时发生错误: {e}")
+        messagebox.showerror("二维码错误", f"生成二维码时发生错误: {e}")
+
+# 播放歌曲的独立进程任务
+def _play_music_task(url):
+    try:
+        from playsound3 import playsound
+        print(f"[{time.ctime()}] 音乐播放进程启动: {url}")
+        playsound(url)
+        print(f"[{time.ctime()}] 音乐播放进程结束。")
+    except Exception as e:
+        print(f"[{time.ctime()}] 音乐播放进程中发生错误: {e}")
+
+# 定期检查音乐播放进程的状态
+def check_music_status():
+    global is_music_playing, music_process, icon, music_check_timer, root
+
+    if is_music_playing and music_process and not music_process.is_alive():
+        print(f"[{time.ctime()}] 监测到音乐播放进程已结束。")
+        is_music_playing = False
+        music_process = None
+        
+        if icon:
+            print(f"[{time.ctime()}] 正在更新右键菜单（音乐播放结束）。")
+            icon.menu = Menu(*build_menu_items())
+        
+        if music_check_timer:
+            root.after_cancel(music_check_timer)
+            music_check_timer = None
+
+    elif is_music_playing and music_process and music_process.is_alive():
+        music_check_timer = root.after(1000, check_music_status) 
+    
+    else:
+        if music_check_timer:
+            root.after_cancel(music_check_timer)
+            music_check_timer = None
+
+# 切换音乐播放/停止
+def toggle_music_playback():
+    global is_music_playing, music_process, icon, music_check_timer
+    
+    if is_music_playing:
+        print(f"[{time.ctime()}] 正在停止音乐...")
+        if music_process and music_process.is_alive():
+            music_process.terminate()
+            music_process = None
+        is_music_playing = False
+        
+        if music_check_timer:
+            root.after_cancel(music_check_timer)
+            music_check_timer = None
+            
+        print(f"[{time.ctime()}] 音乐已停止。")
+    
+    elif bing_music_url:
+        print(f"[{time.ctime()}] 正在开始播放音乐: {bing_music_url}")
+        try:
+            if music_process and music_process.is_alive():
+                music_process.terminate()
+            
+            music_process = multiprocessing.Process(target=_play_music_task, args=(bing_music_url,), daemon=True)
+            music_process.start()
+            is_music_playing = True
+            
+            if music_check_timer: 
+                root.after_cancel(music_check_timer)
+            music_check_timer = root.after(1000, check_music_status)
+            
+            print(f"[{time.ctime()}] 音乐播放进程已启动。")
+        except Exception as e:
+            print(f"[{time.ctime()}] 启动音乐播放进程失败: {e}")
+            is_music_playing = False
+            music_process = None
+    
+    if icon:
+        print(f"[{time.ctime()}] 正在更新右键菜单（音乐播放状态）。")
+        icon.menu = Menu(*build_menu_items())
 
 # 动态构建菜单项
 def build_menu_items():
@@ -168,10 +359,27 @@ def build_menu_items():
         menu_items.append(item('复制保存', copy_and_save_wallpaper))
 
     if bing_copyright:
-        menu_items.append(item('图片信息', show_copyright_info))
+        menu_items.append(item('壁纸信息', show_copyright_info))
+
+    if bing_id:
+        menu_items.append(Menu.SEPARATOR)
+        menu_items.append(item('分享壁纸', show_share_qr))
 
     menu_items.append(Menu.SEPARATOR)
 
+    if bing_music_name and bing_music_url:
+        menu_items.append(item('==Song of the Day==', None, enabled=False))
+        
+        if bing_music_desc:
+            menu_items.append(item(f'  {bing_music_name}', show_music_description_dialog))
+        else:
+            menu_items.append(item(f'  {bing_music_name}', None, enabled=False))
+        
+        play_stop_text = "停止播放" if is_music_playing else "播放歌曲"
+        menu_items.append(item(f'  {play_stop_text}', lambda: toggle_music_playback()))
+        
+        menu_items.append(Menu.SEPARATOR)
+        
     menu_items.append(item('开机运行', toggle_startup, checked=lambda item: is_startup_enabled()))
 
     if getattr(sys, 'frozen', False):
@@ -183,9 +391,19 @@ def build_menu_items():
     return tuple(menu_items)
 
 #更新墙纸任务
-def update_wallpaper_job(is_random=False): # is_random 参数用于判断是否为随机复习
-    global icon, bing_word, bing_url, bing_mp3, bing_copyright, bing_copyright_url
-    bing_word, bing_url, bing_mp3, bing_copyright, bing_copyright_url = None, None, None, None, None
+def update_wallpaper_job(is_random=False):
+
+    global icon, bing_word, bing_url, bing_mp3, bing_copyright, bing_copyright_url, bing_id
+    global bing_music_name, bing_music_url, bing_music_desc, is_music_playing, music_process
+    
+    bing_word, bing_url, bing_mp3, bing_copyright, bing_copyright_url, bing_id = None, None, None, None, None, None
+    bing_music_name, bing_music_url, bing_music_desc = None, None, None
+    
+    if music_process and music_process.is_alive():
+        music_process.terminate()
+        music_process = None
+    is_music_playing = False
+
     if icon:
         print(f"[{time.ctime()}] 正在更新右键菜单（清空状态）。")
         icon.menu = Menu(*build_menu_items())
@@ -207,12 +425,34 @@ def update_wallpaper_job(is_random=False): # is_random 参数用于判断是否�
         print(f"[{time.ctime()}] 获取屏幕分辨率失败: {e}，将使用默认URL: {IMAGE_URL}")
         dynamic_image_url = IMAGE_URL
     
-    # 如果是随机复习，则在URL中添加random参数
     if is_random:
         dynamic_image_url += "&random"
         print(f"[{time.ctime()}] 随机复习模式，将使用URL: {dynamic_image_url}")
     else:
         print(f"[{time.ctime()}] 正常循环模式，将使用URL: {dynamic_image_url}")
+
+    try:
+        print(f"[{time.ctime()}] 正在从 {MUSIC_JSON_URL} 下载音乐信息...")
+        music_response = requests.get(MUSIC_JSON_URL, timeout=10)
+        if music_response.status_code == 200:
+            music_data = music_response.json()
+            bing_music_name = music_data.get("name")
+            bing_music_url = music_data.get("url")
+            bing_music_desc = music_data.get("description")
+            
+            if bing_music_name and bing_music_url:
+                print(f"[{time.ctime()}] 音乐信息下载成功: {bing_music_name}")
+                if bing_music_desc:
+                    print(f"    - 音乐描述: {bing_music_desc[:20]}...")
+            else:
+                print(f"[{time.ctime()}] 音乐JSON格式不正确或缺少name/url。")
+                bing_music_name, bing_music_url, bing_music_desc = None, None, None 
+        else:
+            print(f"[{time.ctime()}] 下载音乐信息失败，状态码: {music_response.status_code}")
+            bing_music_name, bing_music_url, bing_music_desc = None, None, None 
+    except Exception as e:
+        print(f"[{time.ctime()}] 下载音乐信息时发生错误: {e}")
+        bing_music_name, bing_music_url, bing_music_desc = None, None, None 
 
     image_downloaded = download_image(dynamic_image_url, full_save_path)
     if image_downloaded:
@@ -242,6 +482,8 @@ def update_wallpaper_job(is_random=False): # is_random 参数用于判断是否�
                 else:
                     bing_copyright = None
                     bing_copyright_url = None
+
+                bing_id = str(tags.get('Image Software', '')).strip()
                 
                 print(f"[{time.ctime()}] EXIF信息提取成功:")
                 print(f"    - Artist (bing_word): {bing_word}")
@@ -249,14 +491,15 @@ def update_wallpaper_job(is_random=False): # is_random 参数用于判断是否�
                 print(f"    - DocumentName (bing_mp3): {bing_mp3}")
                 print(f"    - Copyright (bing_copyright): {bing_copyright}")
                 print(f"    - Copyright URL (bing_copyright_url): {bing_copyright_url}")
+                print(f"    - Software (bing_id): {bing_id}")
 
             else:
                 print(f"[{time.ctime()}] 图片中未找到EXIF信息，清空旧数据。")
-                bing_word, bing_url, bing_mp3, bing_copyright, bing_copyright_url = None, None, None, None, None
+                bing_word, bing_url, bing_mp3, bing_copyright, bing_copyright_url, bing_id = None, None, None, None, None, None
 
         except Exception as e:
             print(f"[{time.ctime()}] 提取EXIF信息时发生错误: {e}")
-            bing_word, bing_url, bing_mp3, bing_copyright, bing_copyright_url = None, None, None, None, None
+            bing_word, bing_url, bing_mp3, bing_copyright, bing_copyright_url, bing_id = None, None, None, None, None, None
         
         if icon:
             print(f"[{time.ctime()}] 正在更新右键菜单...")
@@ -284,7 +527,7 @@ def run_scheduler(icon):
         print(f"[{time.ctime()}] 更新失败，将在 {DOWNLOAD_RETRY_INTERVAL_SECONDS} 秒后重试...")
         time.sleep(DOWNLOAD_RETRY_INTERVAL_SECONDS)
 
-    print(f"[{time.ctime()}] 首次壁纸更新成功。")
+    print(f"[{time.ctime()}] F首次壁纸更新成功。")
     print(f"[{time.ctime()}] 已切换到定时更新模式，每 {UPDATE_INTERVAL_SECONDS / 3600:.1f} 小时更新一次。")
 
     while icon.visible:
@@ -409,7 +652,7 @@ def check_for_updates(icon):
 def play_word_sound():
     if bing_mp3:
         try:
-            print(f"[{time.ctime()}] 正在播放在线音频: {bing_mp3}")
+            print(f"[{time.ctime()}] 正播放在线音频: {bing_mp3}")
             playsound(bing_mp3)
             print(f"[{time.ctime()}] 音频播放完毕。")
         except Exception as e:
@@ -419,6 +662,14 @@ def play_word_sound():
 #退出程序
 def quit_app(icon):
     print("正在退出程序...")
+    
+    # 停止音乐播放进程
+    global music_process
+    if music_process and music_process.is_alive():
+        print("正在停止音乐播放进程...")
+        music_process.terminate()
+        music_process = None
+
     if icon:
         icon.stop()
     if root:
@@ -448,4 +699,5 @@ def main():
     root.mainloop()
 
 if __name__ == "__main__":
+    multiprocessing.freeze_support()
     main()

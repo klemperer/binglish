@@ -3,3 +3,4 @@ pystray
 Pillow
 playsound3
 exifread
+qrcode
