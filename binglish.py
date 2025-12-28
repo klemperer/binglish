@@ -19,38 +19,679 @@ from datetime import datetime
 import multiprocessing
 import qrcode
 from PIL import ImageTk
+import random 
+import configparser
+import re
+import hashlib
 
-VERSION = "1.2.0"
-RELEASE_JSON_URL = "https://ss.blueforge.org/bing/release.json" # 包含版本号和更新说明的JSON文件URL
-DOWNLOAD_URL = "https://ss.blueforge.org/bing/binglish.exe" #最新版本可执行文件
-IMAGE_URL = f"https://ss.blueforge.org/bing?v={VERSION}"  #图片URL
-MUSIC_JSON_URL = "https://ss.blueforge.org/bing/songoftheday.json" # 每日一歌JSON
+VERSION = "1.3.0"
+RELEASE_JSON_URL = "https://ss.blueforge.org/bing/release.json" 
+DOWNLOAD_URL = "https://ss.blueforge.org/bing/binglish.exe" 
+IMAGE_URL = f"https://ss.blueforge.org/bing?v={VERSION}"  
+MUSIC_JSON_URL = "https://ss.blueforge.org/bing/songoftheday.json" 
+REMOTE_REMIND_URL = "https://ss.blueforge.org/remind.json"
+HISTORY_URL_BASE = "https://ss.blueforge.org/getHistory"
 
-UPDATE_INTERVAL_SECONDS = 3 * 60 * 60 #每3小时更新图片
+UPDATE_INTERVAL_SECONDS = 3 * 60 * 60 
 APP_NAME = "Binglish"
 REG_KEY_PATH = r'Software\Microsoft\Windows\CurrentVersion\Run'
 ICON_FILENAME = "binglish.ico"
 DOWNLOAD_RETRY_INTERVAL_SECONDS = 30
 INTERNET_CHECK_INTERVAL_SECONDS = 60
-PROJECT_URL = "https://github.com/klemperer/binglish" #项目网址
+PROJECT_URL = "https://github.com/klemperer/binglish" 
+CONFIG_FILENAME = "binglish.ini"
 
-bing_word = None # 单词本身
-bing_url = None  # 单词详情页URL
-bing_mp3 = None  # 单词发音MP3文件URL
-bing_copyright = None # 图片版权文本
-bing_copyright_url = None # 图片版权链接
-bing_id = None # 图片唯一ID，用于分享
-bing_music_name = None # 每日一歌名称
-bing_music_url = None  # 每日一歌MP3 URL
-bing_music_desc = None # 每日一歌描述
-is_music_playing = False # 音乐是否正在播放
-music_process = None # 音乐播放进程
-music_check_timer = None # 用于存储音乐检查计时器
+REST_INTERVAL_SECONDS = 2700     # 默认休息间隔45分钟
+IDLE_RESET_SECONDS = 300         # 闲置5分钟重置计时
+REST_LOCK_SECONDS = 30           # 默认锁定屏幕30秒
+OVERLAY_COLOR = "#2C3E50"        # 默认遮罩颜色
+
+# 休息提示词
+REST_QUOTES = [
+    ("Even a Ferrari needs a pit stop. You're a Ferrari, right?", "法拉利也需要进站加油。你也是法拉利，对吧？"),
+    ("The computer won't run away. Promise.", "电脑不会长腿跑掉的，我保证。"),
+    ("Time to blink manually.", "是时候手动眨眨眼了。"),
+    ("Your spine called. It wants to be straight for a bit.", "你的脊椎打电话来了，它想稍微直一直。"),
+    ("Hydrate or diedrate. Go drink water.", "要么喝水，要么枯萎。去喝水。"),
+    ("404: Energy Not Found. Please reboot yourself.", "404：未找到能量。请重启你自己。"),
+    ("Step away from the glowing rectangle.", "离那个发光的长方形远一点。"),
+    ("You've been sitting longer than a gargoyle.", "你坐得比石像鬼还久。"),
+    ("Reality is calling. It's high resolution out there.", "现实在呼唤。外面的分辨率很高的。"),
+    ("Give your mouse a break. It's exhausted.", "放过你的鼠标吧，它累坏了。"),
+    ("Look at something further than 50cm away. Like a wall.", "看点50厘米以外的东西。比如墙。"),
+    ("If you don't rest, your bugs will multiply.", "如果你不休息，你的Bug会繁殖的。"),
+    ("Stretch. You don't want to turn into a shrimp.", "伸个懒腰。你不想变成一只虾米吧。"),
+    ("Pause game. Life continues.", "游戏暂停。生活继续。"),
+    ("Go annoy your cat/dog/colleague for a moment.", "去骚扰一下你的猫/狗/同事吧。"),
+    ("Ctrl+Alt+Del your fatigue.", "Ctrl+Alt+Del 强制结束你的疲劳。"),
+    ("Loading 'Energy'... Please wait 30 seconds.", "正在加载“能量”... 请等待30秒。"),
+    ("A rested brain is a sexy brain.", "休息过的大脑才是性感的大脑。"),
+    ("Don't let the pixels hypnotize you.", "别让像素把你催眠了。"),
+    ("Nature called. Not the bathroom, actual nature.", "大自然在召唤。不是指厕所，是真的大自然。"),
+    ("Your chair misses your absence.", "你的椅子怀念你不在的时候。"),
+    ("Refresh your soul, not just the webpage.", "刷新一下灵魂，而不只是网页。"),
+    ("Keep calm and take a break.", "保持冷静，休息一下。"),
+    ("System Overheat. Cooling required.", "系统过热。需要冷却。"),
+    ("Battery Low. Please recharge with coffee or tea.", "电量低。请用咖啡或茶充电。"),
+    ("Remember the sun? It's that bright ball in the sky.", "还记得太阳吗？就是天上那个亮球。"),
+    ("Typing speed -50% due to fatigue.", "由于疲劳，打字速度 -50%。"),
+    ("AFK (Away From Keyboard) for a bit.", "暂时 AFK 一下吧。"),
+    ("You are not a robot. Or are you?", "你不是机器人。还是说你是？"),
+    ("Your brain has left the chat. Please wait for it to reconnect.", "你的大脑已退出群聊。请等待重连。"),
+    ("Error 404: Motivation not found. Reboot required.", "错误 404：未找到动力。需要重启。"),
+    ("Stop typing. The keyboard is filing a restraining order.", "别敲了。键盘正在申请针对你的限制令。"),
+    ("Go look at a tree. A real one. Not a decision tree.", "去看棵树。真的树。不是决策树。"),
+    ("You are simulating a statue perfectly. Now move.", "你模仿雕像模仿得很完美。现在动一下。"),
+    ("Your posture resembles a cooked shrimp. Straighten up.", "你的坐姿像只煮熟的虾米。直起来。"),
+    ("Even the CPU throttles when it gets too hot. Chill.", "CPU 热了都知道降频。你也冷静下。"),
+    ("Your eyes are dry. Blink. Like a human.", "眼睛干了。眨眼。像个人类那样。"),
+    ("Warning: User battery is critically low.", "警告：用户电量严重不足。"),
+    ("I bet you forgot what the sun looks like.", "我打赌你忘了太阳长什么样了。"),
+    ("Clear your cache. And by cache, I mean your head.", "清一下缓存。我是说你的脑子。"),
+    ("Ctrl+S your work, Ctrl+Alt+Del your stress.", "Ctrl+S 保存工作，Ctrl+Alt+Del 结束压力。"),
+    ("Have you tried turning yourself off and on again?", "你试过把自己关机再重启吗？"),
+    ("Your spine is plotting revenge against you.", "你的脊椎正在密谋报复你。"),
+    ("The bugs will still be there in 5 minutes.", "Bug 还是那个 Bug，5分钟后它还在那。"),
+    ("Don't let the blue light turn you into a zombie.", "别让蓝光把你变成了僵尸。"),
+    ("Touch grass. Literally.", "去摸摸草。字面意思。"),
+    ("Stand up. Your butt is falling asleep.", "站起来。你的屁股睡着了。"),
+    ("System maintenance required: Intake caffeine or water.", "需要系统维护：摄入咖啡因或水。"),
+    ("You've been scroll-locked. Unlock yourself.", "你被 Scroll Lock 了。给自己解锁吧。"),
+    ("Nature called. It left a voicemail. Go listen.", "大自然来电话了。留了语音信箱。去听听。"),
+    ("Taking a break is part of the algorithm.", "休息也是算法的一部分。"),
+    ("Don't code a memory leak in your own brain.", "别给自己脑子里写出内存泄漏了。"),
+    ("Your lumbar support misses you. Lean back.", "你的腰靠想你了。往后靠靠。"),
+    ("A 5-minute break saves 5 hours of debugging.", "休息5分钟，省下5小时改 Bug。"),
+    ("Are you waiting for a segmentation fault in your body?", "你在等身体报段错误吗？"),
+    ("Esc key is not just on the keyboard.", "Esc 键不只在键盘上。"),
+    ("Refresh your perspective, not just the browser.", "刷新一下视野，而不只是浏览器。"),
+    ("Gravity check: Can you still stand up?", "重力检查：你还能站起来吗？"),
+    ("The internet will survive without you for 5 minutes.", "没你这5分钟，互联网也不会崩。"),
+    ("Your screen resolution is high. Your vision is getting low.", "屏幕分辨率挺高。你的视力在走低。"),
+    ("Don't be a browser tab that plays music you can't find.", "别做那个找不到在哪放音乐的浏览器标签页。"),
+    ("Stretch. Do not evolve into a T-Rex.", "伸展一下。别退化成霸王龙。"),
+    ("Close your eyes. Visualize a beach. Or a bed.", "闭眼。想象海滩。或者一张床。"),
+    ("Your RAM is full. Garbage collection needed.", "内存满了。需要进行垃圾回收。"),
+    ("Step away from the machine, human.", "离开那台机器，人类。"),
+    ("Loading fresh air... 0% complete.", "正在加载新鲜空气... 完成度 0%。"),
+    ("Ping timeout. Your brain is lagging.", "Ping 超时。你的大脑卡顿了。"),
+    ("Look at something 20 feet away for 20 seconds.", "看20英尺外的东西20秒（20-20-20法则）。"),
+    ("You are not a robot. Robots don't get back pain.", "你不是机器人。机器人不会腰疼。"),
+    ("Don't let your coffee get cold while you stare at code.", "别盯着代码看，把咖啡放凉了。"),
+    ("Minimize all windows. Maximize wellness.", "最小化所有窗口。最大化健康。"),
+    ("Time for a bio-break. You know what that means.", "生物钟休息时间。你懂我意思。"),
+    ("Checking connection to reality... Signal weak.", "正在检查与现实的连接... 信号微弱。"),
+    ("Put the mouse down slowly and nobody gets hurt.", "慢慢放下鼠标，没人会受伤。"),
+    ("Go annoy a coworker. It's social interaction.", "去打扰个同事。这也算社交。"),
+    ("Take a deep breath. Not a shallow one. A deep one.", "深呼吸。不是浅呼吸。是深呼吸。"),
+    ("Is your neck made of stone? Rotate it.", "脖子是石头做的吗？转一转。"),
+    ("The matrix has you. Jack out for a bit.", "你被矩阵困住了。拔线出来一会儿。"),
+    ("Don't doom-scroll. Doom-stretch instead.", "别刷屏了。起来“刷”个懒腰。"),
+    ("Your typing speed is dropping. Your typos are rising.", "打字速度在降。错别字在涨。"),
+    ("Give your eyes a holiday.", "给眼睛放个假。"),
+    ("Remember blinking? It keeps eyes moist. Try it.", "还记得眨眼吗？能保湿。试试看。"),
+    ("Go find a window. Look out of it.", "找个窗户。往外看。"),
+    ("Hydrate. Your brain is 73% water. Refill it.", "补水。你脑子73%是水。续杯。"),
+    ("Status update: User needs a reboot.", "状态更新：用户需要重启。"),
+    ("Don't become a legacy system.", "别让自己成了“老旧系统”。"),
+    ("Run diagnostic tool: 'Walk_Around_Room.exe'.", "运行诊断工具：'屋里走两步.exe'。"),
+    ("There is no dark mode for real life fatigue.", "现实生活的疲劳可没有“深色模式”。"),
+    ("Your code is compiling. You should be stretching.", "代码在编译。你应该在拉伸。"),
+    ("Disconnect to reconnect.", "断开连接，为了更好地连接。"),
+    ("Screen time is up. Real time begins.", "屏幕时间到。现实时间开始。"),
+    ("Avoid burnout. It smells like toasted wires.", "避免过劳烧毁。闻起来像烤焦的电线。"),
+    ("You have been idle in real life for too long.", "你在现实生活中“挂机”太久了。"),
+    ("Go stretch your legs before they forget how to walk.", "去伸伸腿，趁它们还没忘怎么走路。"),
+    ("Alert: Caffeine levels dropping. Cortisol rising.", "警报：咖啡因水平下降。皮质醇上升。"),
+    ("Look up. The ceiling is boring, but it's not a screen.", "抬头。天花板很无聊，但它不是屏幕。"),
+    ("Shake your hands out. Jazz hands!", "甩甩手。爵士手！"),
+    ("Are your shoulders touching your ears? Drop them.", "肩膀缩到耳朵那儿了吗？放下来。"),
+    ("Defag your mind.", "对你的大脑进行磁盘碎片整理。"),
+    ("Force quit 'Worrying'.", "强制退出“焦虑”进程。"),
+    ("Even superheroes take off the cape sometimes.", "超级英雄有时候也得脱下披风。"),
+    ("Walk away. The solution will come when you're peeing.", "走开一会。上厕所的时候方案自然就有了。"),
+    ("Save your game. Pause your work.", "保存游戏。暂停工作。"),
+    ("Low power mode enabled for Human.", "人类低电量模式已启用。"),
+    ("Detecting high stress levels. Abort mission immediately.", "检测到高压力水平。立即中止任务。"),
+    ("You look like you need a hug. Or a nap.", "你看着像需要一个拥抱。或者一个午觉。"),
+    ("Be right back. You, not the computer.", "马上回来（BRB）。是指你，不是电脑。"),
+    ("Unlock achievement: 'Stood Up Today'.", "解锁成就：‘今天站起来过’。"),
+    ("Don't let the pixels bite.", "别让像素咬你一口。"),
+    ("Are you a mushroom? Because you're sitting in the dark.", "你是蘑菇吗？一直坐在黑影里。"),
+    ("Give your biological neural network a rest.", "给你的生物神经网络放个假。"),
+    ("Overheating warning. Vent heat by walking.", "过热警告。通过散步散热。"),
+    ("Remember, you are carbon-based, not silicon-based.", "记住，你是碳基生物，不是硅基生物。"),
+    ("Stop slouching. You look like a question mark.", "别驼背。你看着像个问号。"),
+    ("Go make some tea. The ritual is healing.", "去泡杯茶。这个仪式很治愈。"),
+    ("Close tab: 'Stress'. Open tab: 'Peace'.", "关闭标签页：‘压力’。打开标签页：‘平静’。"),
+    ("Your output quality is degrading. Rest required.", "产出质量在下降。要求休息。"),
+    ("Don't ignore the hardware (your body).", "别忽视了硬件（你的身体）。"),
+    ("Keep calm and step away from the keyboard.", "保持冷静，远离键盘。"),
+    ("Life is not a sprint. It's a marathon with snack breaks.", "生活不是冲刺。是有零食时间的马拉松。"),
+    ("Go get some Vitamin D. The real kind.", "去搞点维他命D。真的那种。"),
+    ("Even the internet sleeps... wait, no it doesn't. But you should.", "互联网都睡觉... 呃它不睡。但你应该睡。"),
+    ("Reset your uptime.", "重置你的运行时间。"),
+    ("Switch off to switch on.", "关机是为了更好地开机。"),
+    ("Your focus needs autofocusing.", "你的注意力需要自动对焦了。"),
+    ("Don't let your dreams be dreams. But do sleep.", "别让梦想只是梦想。但觉还是要睡的。")
+]
+
+bing_word = None 
+bing_url = None  
+bing_mp3 = None  
+bing_copyright = None 
+bing_copyright_url = None 
+bing_id = None 
+bing_music_name = None 
+bing_music_url = None  
+bing_music_desc = None 
+is_music_playing = False 
+music_process = None 
+music_check_timer = None 
+
+# 全局变量用于休息提醒
+is_rest_enabled = False # 是否开启功能
+last_activity_time = time.time() # 上次活动时间
+last_rest_time = time.time() # 上次休息（或启动）时间
+is_overlay_showing = False # 遮罩层是否正在显示
+new_version_available = False # 是否存在新版本标志
 
 # 用于持有 pystray 图标对象的引用
 root = None
 icon = None
 
+# Windows API 结构体定义，用于检测闲置时间
+class LASTINPUTINFO(ctypes.Structure):
+    _fields_ = [("cbSize", ctypes.c_uint), ("dwTime", ctypes.c_uint)]
+
+# 获取系统空闲时间（秒）
+def get_idle_duration():
+    lastInputInfo = LASTINPUTINFO()
+    lastInputInfo.cbSize = ctypes.sizeof(LASTINPUTINFO)
+    if ctypes.windll.user32.GetLastInputInfo(ctypes.byref(lastInputInfo)):
+        millis = ctypes.windll.kernel32.GetTickCount() - lastInputInfo.dwTime
+        return millis / 1000.0
+    return 0
+
+# 检测当前前台窗口是否全屏
+def is_foreground_fullscreen():
+    try:
+        user32 = ctypes.windll.user32
+        hwnd = user32.GetForegroundWindow()
+        if not hwnd:
+            return False
+            
+        # 获取屏幕分辨率
+        screen_w = user32.GetSystemMetrics(0)
+        screen_h = user32.GetSystemMetrics(1)
+        
+        # 获取窗口矩形
+        rect = ctypes.wintypes.RECT()
+        user32.GetWindowRect(hwnd, ctypes.byref(rect))
+        
+        # 判断是否充满屏幕
+        if (rect.left <= 0 and rect.top <= 0 and 
+            rect.right >= screen_w and rect.bottom >= screen_h):
+            # 排除桌面和任务栏的情况（简单的判断类名）
+            buffer_len = 255
+            class_name = ctypes.create_unicode_buffer(buffer_len)
+            user32.GetClassNameW(hwnd, class_name, buffer_len)
+            name = class_name.value
+            if name in ["Progman", "WorkerW", "Shell_TrayWnd"]:
+                return False
+            return True
+        return False
+    except Exception:
+        return False
+
+# 打开配置文件
+def open_config_file():
+    config_path = os.path.join(os.path.dirname(get_executable_path()), CONFIG_FILENAME)
+    try:
+        # 确保文件存在，如果不存在尝试重新生成
+        if not os.path.exists(config_path):
+            load_config_and_init()
+            
+        print(f"[{time.ctime()}] 正在调用系统默认编辑器打开: {config_path}")
+        os.startfile(config_path)
+    except Exception as e:
+        print(f"[{time.ctime()}] 打开配置文件失败: {e}")
+        root.after(0, lambda: messagebox.showerror("错误", f"无法打开配置文件: {e}"))
+
+# 初始化并加载配置文件
+def load_config_and_init():
+    global is_rest_enabled, REST_INTERVAL_SECONDS, IDLE_RESET_SECONDS, REST_LOCK_SECONDS, OVERLAY_COLOR
+    
+    config_path = os.path.join(os.path.dirname(get_executable_path()), CONFIG_FILENAME)
+    
+    # 如果文件不存在，创建带有注释的默认文件
+    if not os.path.exists(config_path):
+        try:
+            default_content = """[Settings]
+; 是否开启休息提醒 (0:关闭, 1:开启) - 修改此项后，如通过菜单更改会立即生效；如手动更改文件需重启程序
+IS_REST_ENABLED = 0
+
+; 休息间隔时间(秒)，默认45分钟 - 修改此项需重启程序以生效
+REST_INTERVAL_SECONDS = 2700
+
+; 闲置重置时间(秒)，默认5分钟不动则重置计时 - 修改此项需重启程序以生效
+IDLE_RESET_SECONDS = 300
+
+; 强制休息锁定时间(秒) - 修改此项需重启程序以生效
+REST_LOCK_SECONDS = 30
+
+; 遮罩层背景颜色 (Hex代码) - 修改此项需重启程序以生效
+OVERLAY_COLOR = #2C3E50
+"""
+            with open(config_path, 'w', encoding='utf-8-sig') as f:
+                f.write(default_content)
+            print(f"[{time.ctime()}] 已创建默认配置文件: {config_path}")
+        except Exception as e:
+            print(f"[{time.ctime()}] 创建配置文件失败: {e}")
+
+    # 读取配置
+    config = configparser.ConfigParser()
+    try:
+        if os.path.exists(config_path):
+            config.read(config_path, encoding='utf-8-sig')
+            if 'Settings' in config:
+                settings = config['Settings']
+                # 使用 getboolean 自动处理 0/1/true/false
+                is_rest_enabled = settings.getboolean('IS_REST_ENABLED', fallback=False)
+                REST_INTERVAL_SECONDS = settings.getint('REST_INTERVAL_SECONDS', fallback=2700)
+                IDLE_RESET_SECONDS = settings.getint('IDLE_RESET_SECONDS', fallback=300)
+                REST_LOCK_SECONDS = settings.getint('REST_LOCK_SECONDS', fallback=30)
+                # 获取字符串，去除可能的引号
+                color_val = settings.get('OVERLAY_COLOR', fallback='#2C3E50').strip().strip('"').strip("'")
+                if color_val:
+                    OVERLAY_COLOR = color_val
+                
+                print(f"[{time.ctime()}] 配置加载成功:")
+                print(f"    Enabled: {is_rest_enabled}")
+                print(f"    Interval: {REST_INTERVAL_SECONDS}")
+                print(f"    Idle Reset: {IDLE_RESET_SECONDS}")
+                print(f"    Lock: {REST_LOCK_SECONDS}")
+                print(f"    Color: {OVERLAY_COLOR}")
+            else:
+                print(f"[{time.ctime()}] 配置文件中未找到 [Settings] 节，使用默认值。")
+    except Exception as e:
+        print(f"[{time.ctime()}] 加载配置文件出错: {e}，将使用默认值。")
+
+# 保存休息提醒状态到配置文件
+def save_rest_enabled_to_config(enabled):
+    config_path = os.path.join(os.path.dirname(get_executable_path()), CONFIG_FILENAME)
+    try:
+        if not os.path.exists(config_path):
+            # 如果文件被删了，重新生成
+            load_config_and_init()
+            return
+
+        with open(config_path, 'r', encoding='utf-8-sig') as f:
+            content = f.read()
+        
+        # 使用正则替换 IS_REST_ENABLED = ...
+        new_val = "1" if enabled else "0"
+        pattern = r"(?m)(?i)(^\s*IS_REST_ENABLED\s*=\s*)([^;\r\n]*)"
+        
+        if re.search(pattern, content):
+            new_content = re.sub(pattern, f"\\g<1>{new_val}", content)
+            with open(config_path, 'w', encoding='utf-8-sig') as f:
+                f.write(new_content)
+            print(f"[{time.ctime()}] 配置已更新: IS_REST_ENABLED = {new_val}")
+        else:
+            print(f"[{time.ctime()}] 保存配置失败: 未在文件中找到 IS_REST_ENABLED 定义。")
+            
+    except Exception as e:
+        print(f"[{time.ctime()}] 保存配置失败: {e}")
+
+# 切换休息提醒功能
+def toggle_rest_reminder():
+    global is_rest_enabled, last_rest_time, icon
+    is_rest_enabled = not is_rest_enabled
+    save_rest_enabled_to_config(is_rest_enabled)
+    
+    if is_rest_enabled:
+        last_rest_time = time.time()
+        print(f"[{time.ctime()}] 休息提醒已开启。")
+    else:
+        print(f"[{time.ctime()}] 休息提醒已关闭。")
+        
+    if icon:
+        icon.menu = Menu(*build_menu_items())
+
+# 显示全屏遮罩层 UI
+def show_rest_overlay():
+    global is_overlay_showing, last_rest_time, bing_word
+    if is_overlay_showing:
+        return
+    
+    is_overlay_showing = True
+    
+    quote_en, quote_cn = "", ""
+    quote_en, quote_cn = random.choice(REST_QUOTES)
+    
+    # 创建 Toplevel 窗口
+    overlay = tk.Toplevel(root)
+    overlay.title("Time to Rest")
+    
+    # 全屏、无边框、置顶
+    w = root.winfo_screenwidth()
+    h = root.winfo_screenheight()
+    overlay.geometry(f"{w}x{h}+0+0")
+    overlay.overrideredirect(True)
+    overlay.attributes("-topmost", True)
+    overlay.configure(bg=OVERLAY_COLOR)
+    
+    # 初始透明度为0，用于淡入效果
+    overlay.attributes("-alpha", 0.0)
+
+    # UI 布局
+    container = tk.Frame(overlay, bg=OVERLAY_COLOR)
+    container.pack(expand=True, fill="both")
+    
+    # 垂直居中 Frame
+    center_frame = tk.Frame(container, bg=OVERLAY_COLOR)
+    center_frame.place(relx=0.5, rely=0.5, anchor="center")
+    
+    font_en = ("Helvetica", 32, "bold")
+    font_cn = ("Microsoft YaHei", 24)
+    font_word_hint = ("Microsoft YaHei", 18, "bold")
+    font_btn = ("Microsoft YaHei", 14)
+    
+    lbl_en = tk.Label(center_frame, text=quote_en, font=font_en, fg="white", bg=OVERLAY_COLOR, wraplength=w-100)
+    lbl_en.pack(pady=(0, 20))
+    
+    lbl_cn = tk.Label(center_frame, text=quote_cn, font=font_cn, fg="#BDC3C7", bg=OVERLAY_COLOR, wraplength=w-100)
+    lbl_cn.pack(pady=(0, 40))
+
+    lbl_word = None
+    if bing_word:
+        hint_templates = [
+            f"思考时间：你知道 {bing_word} 的读音、含义和用法吗？",
+            f"考考你：{bing_word} 这个词怎么读，是什么意思？",
+            f"趁休息回忆一下：{bing_word} 通常在什么语境下使用？",
+            f"试着在脑海里造一个包含 {bing_word} 的句子。",
+            f"不查字典，你能准确解释 {bing_word} 的含义吗？",
+            f"闭上眼尝试拼写一下：{bing_word}。",
+            f"小挑战：你能自信地大声读出 {bing_word} 吗？",
+            f"灵魂拷问：你真的完全掌握 {bing_word} 了吗？",
+            f"想想 {bing_word} 可以在什么场景使用。",
+            f"别只顾着发呆，回顾一下 {bing_word} 的中文意思。",
+            f"如果让你给别人讲解 {bing_word}，你会怎么说？",
+            f"快速问答：{bing_word} 是名词、动词还是形容词？",
+            f"今天的重点单词是 {bing_word}，你记住了吗？",
+            f"记忆检查：{bing_word} 有没有什么常见的同义词？",
+            f"{bing_word} —— 看到它，你脑海里浮现出的第一个画面是什么？",
+            f"在休息结束前，请在心里把 {bing_word} 默念三遍。",
+            f"假如现在英语考试，{bing_word} 这道题你会做吗？",
+            f"嘿，放松眼睛的同时，别忘了复习一下：{bing_word}。"
+        ]
+        
+        word_hint_text = random.choice(hint_templates)
+        
+        lbl_word = tk.Label(center_frame, text=word_hint_text, font=font_word_hint, 
+                            fg="#A9DFBF", bg=OVERLAY_COLOR, wraplength=w-100)
+    
+    # 按钮变量
+    remaining_seconds = REST_LOCK_SECONDS
+    btn_text = tk.StringVar()
+    btn_text.set(f"我休息好了 ({remaining_seconds}s)")
+    
+    def on_close(event=None):
+        global is_overlay_showing, last_rest_time
+        overlay.destroy()
+        is_overlay_showing = False
+        last_rest_time = time.time()
+        
+        if icon:
+             icon.menu = Menu(*build_menu_items())
+    
+    btn_ok = tk.Button(center_frame, textvariable=btn_text, font=font_btn, 
+                       command=on_close, state="disabled", 
+                       bg="#ECF0F1", fg="#2C3E50", 
+                       relief="flat", padx=30, pady=10)
+    btn_ok.pack()
+    
+    # 平滑淡入逻辑
+    target_alpha = 0.9  # 最终暗度
+    animation_duration = 3000 # 持续时间 3000ms
+    step_interval = 20 # 刷新间隔 20ms
+    alpha_step = target_alpha / (animation_duration / step_interval)
+
+    def fade_in(current_alpha=0):
+        if current_alpha < target_alpha:
+            new_alpha = current_alpha + alpha_step
+            if new_alpha > target_alpha:
+                new_alpha = target_alpha
+                
+            overlay.attributes("-alpha", new_alpha)
+            overlay.after(step_interval, fade_in, new_alpha)
+        else:
+            start_countdown()
+            
+    # 倒计时逻辑
+    def start_countdown():
+        nonlocal remaining_seconds
+        show_hint_time = REST_LOCK_SECONDS // 2
+        if remaining_seconds == show_hint_time and lbl_word:
+            lbl_word.pack(pady=(0, 40), before=btn_ok)
+        if remaining_seconds > 0:
+            remaining_seconds -= 1
+            btn_text.set(f"我休息好了 ({remaining_seconds}s)")
+            overlay.after(1000, start_countdown)
+        else:
+            btn_text.set("我休息好了")
+            btn_ok.config(state="normal", bg="white", cursor="hand2")
+            overlay.bind('<Return>', on_close)
+            overlay.focus_force()
+    fade_in(0)
+    
+    overlay.focus_force()
+
+# 历史事件遮罩层 UI
+def show_history_overlay(events, date_str):
+    global is_overlay_showing
+
+    if is_overlay_showing:
+        pass
+    
+    is_overlay_showing = True
+
+    overlay = tk.Toplevel(root)
+    overlay.title("On This Day")
+    
+    w = root.winfo_screenwidth()
+    h = root.winfo_screenheight()
+    overlay.geometry(f"{w}x{h}+0+0")
+    overlay.overrideredirect(True)
+    overlay.attributes("-topmost", True)
+    overlay.configure(bg=OVERLAY_COLOR)
+    overlay.attributes("-alpha", 0.0)
+
+    main_container = tk.Frame(overlay, bg=OVERLAY_COLOR)
+    main_container.pack(expand=True, fill="both", padx=50, pady=50)
+
+    title_font = ("Helvetica", 36, "bold")
+    title_text = f"What Happened Today In History ({date_str})"
+    lbl_title = tk.Label(main_container, text=title_text, font=title_font, fg="white", bg=OVERLAY_COLOR)
+    lbl_title.pack(pady=(20, 20))
+
+    hint_font = ("Microsoft YaHei", 12)
+    lbl_hint = tk.Label(main_container, 
+                        text="↓ Use mouse wheel to scroll / 使用滚轮查看更多 ↓", 
+                        font=hint_font, fg="#7F8C8D", bg=OVERLAY_COLOR)
+    lbl_hint.pack(pady=(0, 20))
+    
+    # 滚动区域容器
+    canvas_container = tk.Frame(main_container, bg=OVERLAY_COLOR)
+    canvas_container.pack(expand=True, fill="both")
+
+    canvas = tk.Canvas(canvas_container, bg=OVERLAY_COLOR, highlightthickness=0)
+    # scrollbar = tk.Scrollbar(canvas_container, orient="vertical", command=canvas.yview)
+    
+    scrollable_frame = tk.Frame(canvas, bg=OVERLAY_COLOR)
+
+    # 绑定事件以调整 Canvas 滚动区域
+    scrollable_frame.bind(
+        "<Configure>",
+        lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
+    )
+
+    canvas.create_window((w//2 - 50), 0, window=scrollable_frame, anchor="n") # 居中
+    canvas.pack(side="left", fill="both", expand=True)
+
+    # 填充事件内容
+    font_year = ("Helvetica", 20, "bold")
+    font_en = ("Helvetica", 18)
+    font_cn = ("Microsoft YaHei", 16)
+    
+    for event in events:
+        year = event.get("year", "")
+        text_en = event.get("text_en", "")
+        text_cn = event.get("text_cn", "")
+        
+        # 事件容器
+        event_frame = tk.Frame(scrollable_frame, bg=OVERLAY_COLOR)
+        event_frame.pack(fill="x", pady=15)
+        
+        # 年份 + 英文 (白色)
+        full_en = f"[{year}] {text_en}"
+        lbl_en = tk.Label(event_frame, text=full_en, font=font_en, fg="white", bg=OVERLAY_COLOR, wraplength=w-200, justify="left")
+        lbl_en.pack(anchor="w")
+        
+        # 中文 (浅色，例如浅灰 #95A5A6 或 #BDC3C7)
+        lbl_cn = tk.Label(event_frame, text=text_cn, font=font_cn, fg="#95A5A6", bg=OVERLAY_COLOR, wraplength=w-200, justify="left")
+        lbl_cn.pack(anchor="w", pady=(5, 0))
+
+    # 鼠标滚轮支持
+    def _on_mousewheel(event):
+        canvas.yview_scroll(int(-1*(event.delta/120)), "units")
+    
+    canvas.bind_all("<MouseWheel>", _on_mousewheel)
+    overlay.bind("<MouseWheel>", _on_mousewheel) # 确保绑定到顶层
+
+    # 底部关闭按钮
+    close_frame = tk.Frame(overlay, bg=OVERLAY_COLOR)
+    close_frame.pack(side="bottom", pady=40)
+    
+    def on_close_history(event=None):
+        global is_overlay_showing
+        canvas.unbind_all("<MouseWheel>") # 解绑滚轮防止影响其他
+        overlay.destroy()
+        is_overlay_showing = False
+
+    btn_font = ("Microsoft YaHei", 14)
+    btn_close = tk.Button(close_frame, text="我知道了 (Close)", font=btn_font, 
+                          command=on_close_history,
+                          bg="white", fg="#2C3E50", 
+                          relief="flat", padx=30, pady=10, cursor="hand2")
+    btn_close.pack()
+    
+    # 绑定 ESC 键关闭
+    overlay.bind('<Escape>', on_close_history)
+
+    # 平滑淡入 (复用逻辑)
+    target_alpha = 0.95
+    step_interval = 20
+    alpha_step = target_alpha / (1000 / step_interval) # 1秒内淡入
+
+    def fade_in_history(current_alpha=0):
+        if current_alpha < target_alpha:
+            new_alpha = current_alpha + alpha_step
+            if new_alpha > target_alpha: new_alpha = target_alpha
+            overlay.attributes("-alpha", new_alpha)
+            overlay.after(step_interval, fade_in_history, new_alpha)
+    
+    fade_in_history(0)
+    overlay.focus_force()
+
+# 获取历史事件的后台线程函数
+def _fetch_history_thread():
+    try:
+        now = datetime.now()
+        # 格式化日期字符串用于标题显示 (例如 Feb. 1)
+        date_str = now.strftime("%b. %d")
+        
+        url = f"{HISTORY_URL_BASE}?mm={now.month}&dd={now.day}"
+        print(f"[{time.ctime()}] 正在获取历史上的今天: {url}")
+        
+        response = requests.get(url, timeout=10)
+        
+        valid_data = False
+        events = []
+        
+        if response.status_code == 200:
+            try:
+                data = response.json()
+                if isinstance(data, list) and len(data) > 0:
+                    events = data
+                    valid_data = True
+            except json.JSONDecodeError:
+                print(f"[{time.ctime()}] 历史事件数据不是有效的JSON。")
+        else:
+            print(f"[{time.ctime()}] 获取历史事件失败，状态码: {response.status_code}")
+
+        # 回到主线程更新 UI
+        if valid_data:
+            root.after(0, show_history_overlay, events, date_str)
+        else:
+            root.after(0, lambda: messagebox.showinfo("On This Day", "暂无相关历史内容。\nNo historical events found for today."))
+
+    except Exception as e:
+        print(f"[{time.ctime()}] 获取历史事件时出错: {e}")
+        root.after(0, lambda: messagebox.showerror("Error", f"获取内容出错: {e}"))
+
+# 菜单点击回调
+def on_this_day_click():
+    threading.Thread(target=_fetch_history_thread, daemon=True).start()
+
+# 后台监控线程逻辑
+def rest_monitor_loop():
+    global last_rest_time, icon
+    
+    last_menu_update_time = time.time()
+    
+    while True:
+        try:
+            time.sleep(5) # 每5秒检查一次
+            
+            if is_rest_enabled and icon:
+                if time.time() - last_menu_update_time > 60:
+                    icon.menu = Menu(*build_menu_items())
+                    last_menu_update_time = time.time()
+            
+            # 如果功能未开启，跳过检测逻辑
+            if not is_rest_enabled:
+                continue
+            
+            # 检查空闲时间
+            idle_time = get_idle_duration()
+            
+            # 如果闲置超过设定时间（5分钟），视为已休息，重置计时器
+            if idle_time > IDLE_RESET_SECONDS:
+                if time.time() - last_rest_time > 60: # 避免日志刷屏
+                    print(f"[{time.ctime()}] 检测到用户闲置 {idle_time:.1f}s，重置休息计时器。")
+                last_rest_time = time.time()
+                # 重置时间后，刷新菜单
+                if icon:
+                    icon.menu = Menu(*build_menu_items())
+                continue
+            
+            # 检查是否到了休息时间
+            elapsed = time.time() - last_rest_time
+            if elapsed > REST_INTERVAL_SECONDS:
+                # 检查是否全屏
+                if is_foreground_fullscreen():
+                    print(f"[{time.ctime()}] 到了休息时间，但检测到全屏应用，暂缓提醒。")
+                    # 暂缓 1 分钟再检测，而不是重置
+                elif not is_overlay_showing:
+                    print(f"[{time.ctime()}] 触发休息提醒！")
+                    # 在主线程中显示UI
+                    root.after(0, show_rest_overlay)
+                    
+        except Exception as e:
+            print(f"[{time.ctime()}] 休息监控线程出错: {e}")
+            time.sleep(10)
 
 def resource_path(relative_path):
     try:
@@ -133,6 +774,18 @@ def check_internet_connection():
         return True
     except requests.ConnectionError:
         return False
+
+# 计算文件的 SHA256 哈希值
+def calculate_file_hash(filepath):
+    sha256_hash = hashlib.sha256()
+    try:
+        with open(filepath, "rb") as f:
+            for byte_block in iter(lambda: f.read(4096), b""):
+                sha256_hash.update(byte_block)
+        return sha256_hash.hexdigest()
+    except Exception as e:
+        print(f"[{time.ctime()}] 计算文件哈希失败: {e}")
+        return None
 
 # 在主线程中显示版权信息弹窗
 def show_copyright_info():
@@ -364,9 +1017,18 @@ def build_menu_items():
     if bing_id:
         menu_items.append(Menu.SEPARATOR)
         menu_items.append(item('分享壁纸', show_share_qr))
+    
+    rest_label = '提醒休息'
+    if is_rest_enabled:
+        elapsed = time.time() - last_rest_time
+        remaining = max(0, REST_INTERVAL_SECONDS - elapsed)
+        mins = int(remaining / 60)
+        rest_label = f'提醒休息 (剩余{mins}分)'
+    
+    menu_items.append(item(rest_label, toggle_rest_reminder, checked=lambda item: is_rest_enabled))
 
     menu_items.append(Menu.SEPARATOR)
-
+    menu_items.append(item('Today in History', on_this_day_click))
     if bing_music_name and bing_music_url:
         menu_items.append(item('==Song of the Day==', None, enabled=False))
         
@@ -382,8 +1044,14 @@ def build_menu_items():
         
     menu_items.append(item('开机运行', toggle_startup, checked=lambda item: is_startup_enabled()))
 
+    update_label = '检查更新'
+    if new_version_available:
+        update_label = '检查更新 (有新版本)'
+    
     if getattr(sys, 'frozen', False):
-        menu_items.append(item('检查更新', lambda: check_for_updates(icon)))
+        menu_items.append(item(update_label, lambda: check_for_updates(icon)))
+
+    menu_items.append(item('设置', open_config_file))
     
     menu_items.append(item('关于', show_about_dialog)) 
     menu_items.append(item('退出', lambda: quit_app(icon)))
@@ -413,7 +1081,7 @@ def update_wallpaper_job(is_random=False):
     full_save_path = os.path.join(base_directory, save_filename)
     
     try:
-        ctypes.windll.shcore.SetProcessDpiAwareness(2)
+        # ctypes.windll.shcore.SetProcessDpiAwareness(2) 
         user32 = ctypes.windll.user32
         gdi32 = ctypes.windll.gdi32
         dc = user32.GetDC(None)
@@ -519,6 +1187,8 @@ def run_scheduler(icon):
 
     print(f"[{time.ctime()}] 已连接到互联网，开始尝试首次壁纸更新...")
     
+    threading.Thread(target=check_update_startup_thread, daemon=True).start()
+
     while not update_wallpaper_job():
         if not icon.visible:
             print(f"[{time.ctime()}] 用户在首次更新完成前退出。")
@@ -565,7 +1235,7 @@ def copy_and_save_wallpaper():
         root.after(0, lambda: messagebox.showerror("操作失败", f"复制文件时出错: {e}"))
 
 #更新新版本程序
-def download_and_update(icon):
+def download_and_update(icon, expected_hash=None):
     new_exe_path = os.path.join(os.path.dirname(get_executable_path()), "bing_new.exe")
     try:
         print(f"[{time.ctime()}] 正在从 {DOWNLOAD_URL} 下载新版本...")
@@ -575,6 +1245,22 @@ def download_and_update(icon):
                 for chunk in response.iter_content(chunk_size=8192):
                     f.write(chunk)
             print(f"[{time.ctime()}] 新版本已下载到: {new_exe_path}")
+
+            if expected_hash:
+                print(f"[{time.ctime()}] 正在校验文件完整性...")
+                downloaded_hash = calculate_file_hash(new_exe_path)
+                if not downloaded_hash or downloaded_hash.lower() != expected_hash.lower():
+                    print(f"[{time.ctime()}] 哈希校验失败！期望: {expected_hash}, 实际: {downloaded_hash}")
+                    try:
+                        os.remove(new_exe_path)
+                        print(f"[{time.ctime()}] 已删除校验失败的文件。")
+                    except Exception as e:
+                        print(f"[{time.ctime()}] 删除失败文件时出错: {e}")
+                    
+                    root.after(0, lambda: messagebox.showerror("更新失败", "下载的文件校验失败，可能已损坏或被篡改。"))
+                    return # 终止更新流程
+                else:
+                    print(f"[{time.ctime()}] 哈希校验通过。")
             
             updater_bat_path = os.path.join(os.path.dirname(get_executable_path()), "updater.bat")
             current_exe_path = get_executable_path()
@@ -607,46 +1293,72 @@ del "%~f0"
         print(f"[{time.ctime()}] 下载时发生错误: {e}")
 
 #检查更新提示框
-def show_update_dialog(result, icon):
-    status, version_or_error, releasenotes = result
+def show_update_dialog(result, icon, silent=False):
+    if len(result) == 4:
+        status, version_or_error, releasenotes, hash_value = result
+    else:
+        status, version_or_error, releasenotes = result
+        hash_value = None
+    
+    if silent:
+        if status == 'update_available':
+            global new_version_available
+            new_version_available = True
+            print(f"[{time.ctime()}] 静默检测：发现新版本 {version_or_error}")
+            
+            if icon:
+                icon.menu = Menu(*build_menu_items())
+        return
+
     if status == 'update_available':
         message = f"有新版本 ({version_or_error}) 可用。\n\n更新说明:\n{releasenotes}\n\n您想现在更新吗？\n点击确定后程序将在后台更新。"
         if messagebox.askyesno("发现新版本", message):
-            threading.Thread(target=download_and_update, args=(icon,)).start()
+            threading.Thread(target=download_and_update, args=(icon, hash_value)).start()
     elif status == 'no_update':
         messagebox.showinfo("没有更新", "您使用的已是最新版本。")
     elif status == 'error':
         messagebox.showerror("检查更新失败", f"检查更新时发生错误: {version_or_error}")
 
 #检查更新函数
-def perform_network_check(icon):
-    print(f"[{time.ctime()}] 正在检查更新...")
+def perform_network_check(icon, silent=False):
+    if not silent:
+        print(f"[{time.ctime()}] 正在检查更新...")
+        
     try:
         response = requests.get(RELEASE_JSON_URL, timeout=20)
         response.raise_for_status()
         release_info = response.json()
         latest_version = release_info.get("version")
         releasenotes = release_info.get("releasenotes")
+        hash_value = release_info.get("hash")
         
-        print(f"[{time.ctime()}] 当前版本: {VERSION}, 最新版本: {latest_version}")
+        if not silent:
+            print(f"[{time.ctime()}] 当前版本: {VERSION}, 最新版本: {latest_version}")
         
         if latest_version and latest_version != VERSION:
-            result = ('update_available', latest_version, releasenotes)
+            result = ('update_available', latest_version, releasenotes, hash_value)
         else:
-            result = ('no_update', None, None)
+            result = ('no_update', None, None, None)
             
     except requests.exceptions.RequestException as e:
-        print(f"[{time.ctime()}] F检查更新时发生错误: {e}")
-        result = ('error', e, None)
+        if not silent:
+            print(f"[{time.ctime()}] F检查更新时发生错误: {e}")
+        result = ('error', e, None, None)
     except json.JSONDecodeError as e:
-        print(f"[{time.ctime()}] 解析更新信息时发生错误: {e}")
-        result = ('error', f"无法解析更新文件: {e}", None)
+        if not silent:
+            print(f"[{time.ctime()}] 解析更新信息时发生错误: {e}")
+        result = ('error', f"无法解析更新文件: {e}", None, None)
     
-    root.after(0, show_update_dialog, result, icon)
+    root.after(0, show_update_dialog, result, icon, silent)
 
 #检查更新线程
 def check_for_updates(icon):
-    threading.Thread(target=perform_network_check, args=(icon,)).start()
+    threading.Thread(target=perform_network_check, args=(icon, False)).start()
+
+# 启动时静默检查更新线程
+def check_update_startup_thread():
+    time.sleep(5) 
+    perform_network_check(None, silent=True)
 
 #播放单词相关语音
 def play_word_sound():
@@ -676,9 +1388,19 @@ def quit_app(icon):
         root.destroy()
 
 def main():
-    global root, icon
+    global root, icon, is_rest_enabled
+    
+    # 添加全局高DPI感知设置，解决屏幕缩放导致遮罩无法覆盖全屏的问题
+    try:
+        ctypes.windll.shcore.SetProcessDpiAwareness(1) 
+    except Exception:
+        ctypes.windll.user32.SetProcessDPIAware()
+
     root = tk.Tk()
     root.withdraw()
+
+    load_config_and_init()
+    print(f"[{time.ctime()}] 休息提醒功能状态: {'开启' if is_rest_enabled else '关闭'}")
 
     try:
         icon_path = resource_path(ICON_FILENAME)
@@ -687,13 +1409,17 @@ def main():
         print(f"错误：找不到图标文件 '{ICON_FILENAME}'。")
         sys.exit(1)
     
-    initial_menu = Menu(*build_menu_items())
-    icon = Icon(APP_NAME, image, "Binglish桌面英语", menu=initial_menu)
+    initial_menu_items = build_menu_items()
+    icon = Icon(APP_NAME, image, "Binglish桌面英语", menu=Menu(*initial_menu_items))
     
     threading.Thread(target=icon.run, daemon=True).start()
 
     update_thread = threading.Thread(target=run_scheduler, args=(icon,), daemon=True)
     update_thread.start()
+
+    # 启动休息监控线程
+    monitor_thread = threading.Thread(target=rest_monitor_loop, daemon=True)
+    monitor_thread.start()
     
     print("程序已启动并在后台运行。请在任务栏右下角查找图标。")
     root.mainloop()
