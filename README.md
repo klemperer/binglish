@@ -14,7 +14,7 @@
 
 ## 下载已编译程序
 
-[Github releases](https://github.com/klemperer/binglish/releases/download/latest/binglish.exe) 或者 [备用下载地址](https://ss.blueforge.org/bing/binglish.exe)
+[Github releases](https://github.com/klemperer/binglish/releases/download/v1.3.0/binglish.exe) 或者 [备用下载地址](https://ss.blueforge.org/bing/binglish.exe)
 
 ## 或 自行打包
 
