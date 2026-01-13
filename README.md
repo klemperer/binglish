@@ -14,7 +14,7 @@
 
 ## 下载已编译程序
 
-[Github releases](https://github.com/klemperer/binglish/releases/download/latest/binglish.exe) 或者 [备用下载地址](https://ss.blueforge.org/bing/binglish.exe)
+[Github releases](https://github.com/klemperer/binglish/releases/download/v1.3.0/binglish.exe) 或者 [备用下载地址](https://ss.blueforge.org/bing/binglish.exe)
 
 ## 或 自行打包
 
@@ -43,6 +43,8 @@ python binglish.py
 - 复制保存：如果喜欢当前壁纸，点击该选项可复制一份（保存于程序所在目录）
 - 图片信息：当前壁纸的内容、版权等相关信息
 - 分享壁纸：手机扫码，将当前壁纸分享给微信好友、朋友圈等
+- 提醒休息：定时提醒休息（在右键菜单启用，默认45分钟，可修改配置）
+- Today in History：历史上的今天，精选自WikiMedia
 - Song of the Day：每个工作日推荐一首外文歌曲（来源NPR）
 
 ## 用作ipad锁屏墙纸
