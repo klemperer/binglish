@@ -24,7 +24,7 @@ import configparser
 import re
 import hashlib
 
-VERSION = "1.3.0"
+VERSION = "1.3.1"
 RELEASE_JSON_URL = "https://ss.blueforge.org/bing/release.json" 
 DOWNLOAD_URL = "https://ss.blueforge.org/bing/binglish.exe" 
 IMAGE_URL = f"https://ss.blueforge.org/bing?v={VERSION}"  
@@ -1000,7 +1000,10 @@ def build_menu_items():
         menu_items.append(item(f'查单词 {bing_word}', lambda: webbrowser.open(bing_url)))
     
     if bing_mp3:
-        menu_items.append(item(f'读单词 {bing_word}', lambda: threading.Thread(target=play_word_sound, daemon=True).start()))
+        menu_items.append(item(f'听单词 {bing_word}', lambda: threading.Thread(target=play_word_sound, daemon=True).start()))
+        
+    if bing_word:
+        menu_items.append(item(f'看单词{bing_word}', lambda: webbrowser.open(f"https://www.playphrase.me/#/search?q={bing_word}&language=en")))
     
     if bing_url or bing_mp3:
         menu_items.append(Menu.SEPARATOR)
@@ -1015,7 +1018,6 @@ def build_menu_items():
         menu_items.append(item('壁纸信息', show_copyright_info))
 
     if bing_id:
-        menu_items.append(Menu.SEPARATOR)
         menu_items.append(item('分享壁纸', show_share_qr))
     
     rest_label = '提醒休息'
@@ -1024,7 +1026,8 @@ def build_menu_items():
         remaining = max(0, REST_INTERVAL_SECONDS - elapsed)
         mins = int(remaining / 60)
         rest_label = f'提醒休息 (剩余{mins}分)'
-    
+
+    menu_items.append(Menu.SEPARATOR)
     menu_items.append(item(rest_label, toggle_rest_reminder, checked=lambda item: is_rest_enabled))
 
     menu_items.append(Menu.SEPARATOR)
