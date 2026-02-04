@@ -14,7 +14,7 @@
 
 ## 下载已编译程序
 
-[Github releases](https://github.com/klemperer/binglish/releases/download/v1.3.0/binglish.exe) 或者 [备用下载地址](https://ss.blueforge.org/bing/binglish.exe)
+[Github releases](https://github.com/klemperer/binglish/releases/download/v1.4.0/binglish.exe) 或者 [备用下载地址](https://ss.blueforge.org/bing/binglish.exe)
 
 ## 或 自行打包
 
@@ -46,7 +46,12 @@ python binglish.py
 - 分享壁纸：手机扫码，将当前壁纸分享给微信好友、朋友圈等
 - 提醒休息：定时提醒休息（在右键菜单启用，默认45分钟，可修改配置）
 - Today in History：历史上的今天，精选自WikiMedia
+- Binglish Games：英语小游戏（Sentence Master、Wordle）
 - Song of the Day：每个工作日推荐一首外文歌曲（来源NPR）
+
+## 被Windows Defender等识别为流氓软件
+
+PyInstaller打包的EXE文件常被杀毒软件误报为病毒或流氓软件（通常为Trojan/木马），主要原因是其使用通用的启动加载器（bootloader）和临时文件解压机制，与部分病毒特征相似。Binglish完全开源，不包含任何恶意代码。如被误报为病毒，可将binglish.exe加入白名单，具体步骤参考https://www.honor.com/cn/support/content/zh-cn15810578/。
 
 ## 用作ipad锁屏墙纸
 
