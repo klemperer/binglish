@@ -24,13 +24,15 @@ import configparser
 import re
 import hashlib
 
-VERSION = "1.3.1"
+VERSION = "1.4.0"
 RELEASE_JSON_URL = "https://ss.blueforge.org/bing/release.json" 
 DOWNLOAD_URL = "https://ss.blueforge.org/bing/binglish.exe" 
 IMAGE_URL = f"https://ss.blueforge.org/bing?v={VERSION}"  
 MUSIC_JSON_URL = "https://ss.blueforge.org/bing/songoftheday.json" 
 REMOTE_REMIND_URL = "https://ss.blueforge.org/remind.json"
+USELESS_FACT_URL = "https://ss.blueforge.org/bing/uselessfact.json"
 HISTORY_URL_BASE = "https://ss.blueforge.org/getHistory"
+GAME_DATA_URL = "https://ss.blueforge.org/bing/games.json"
 
 UPDATE_INTERVAL_SECONDS = 3 * 60 * 60 
 APP_NAME = "Binglish"
@@ -200,6 +202,310 @@ new_version_available = False # 是否存在新版本标志
 root = None
 icon = None
 
+def play_game_sound(sound_type="click"):
+    def _play():
+        try:
+            if sound_type == "click":
+                ctypes.windll.kernel32.Beep(800, 30)
+            elif sound_type == "submit":
+                ctypes.windll.kernel32.Beep(600, 50)
+                ctypes.windll.kernel32.Beep(900, 50)
+        except: pass
+    threading.Thread(target=_play, daemon=True).start()
+
+def show_game_overlay():
+    global is_overlay_showing
+    if is_overlay_showing: return
+    is_overlay_showing = True
+
+    overlay = tk.Toplevel(root)
+    overlay.title("Binglish Games")
+    w, h = root.winfo_screenwidth(), root.winfo_screenheight()
+    overlay.geometry(f"{w}x{h}+0+0")
+    overlay.overrideredirect(True)
+    overlay.attributes("-topmost", True, "-alpha", 0.0)
+    overlay.configure(bg=OVERLAY_COLOR)
+
+    game_data = {}
+    try:
+        res = requests.get(GAME_DATA_URL, timeout=5)
+        if res.status_code == 200: game_data = res.json()
+    except: pass
+
+    if not game_data:
+        is_overlay_showing = False; overlay.destroy(); return
+
+    game_active = False 
+    start_time = 0
+    timer_var = tk.StringVar(value="Time: 00:00")
+
+    def on_close_game(e=None):
+        global is_overlay_showing; nonlocal game_active
+        game_active = False; overlay.destroy(); is_overlay_showing = False
+
+    def update_timer():
+        if game_active and is_overlay_showing:
+            elapsed = int(time.time() - start_time)
+            timer_var.set(f"Time: {elapsed//60:02d}:{elapsed%60:02d}")
+            overlay.after(1000, update_timer)
+
+    lobby_frame = tk.Frame(overlay, bg=OVERLAY_COLOR)
+    lobby_frame.place(relx=0.5, rely=0.5, anchor="center")
+
+    tk.Label(lobby_frame, text="Binglish Games", font=("Helvetica", 40, "bold"), fg="#F1C40F", bg=OVERLAY_COLOR).pack(pady=40)
+    tk.Label(lobby_frame, text="请选择一个单词游戏开始挑战：", font=("Microsoft YaHei", 16), fg="#BDC3C7", bg=OVERLAY_COLOR).pack(pady=10)
+
+    btn_frame = tk.Frame(lobby_frame, bg=OVERLAY_COLOR)
+    btn_frame.pack(pady=30)
+
+    game_container = tk.Frame(overlay, bg=OVERLAY_COLOR)
+
+    def start_game(game_type):
+        nonlocal game_active, start_time
+        lobby_frame.destroy() 
+        game_container.place(relx=0.5, rely=0.55, anchor="center")
+        
+        timer_lbl = tk.Label(overlay, textvariable=timer_var, font=("Helvetica", 22, "bold"), fg="#BDC3C7", bg=OVERLAY_COLOR)
+        timer_lbl.place(relx=0.98, rely=0.02, anchor="ne")
+        
+        game_active = True
+        start_time = time.time()
+        update_timer()
+
+        result_msg = tk.Label(overlay, text="", font=("Microsoft YaHei", 24, "bold"), bg=OVERLAY_COLOR)
+        result_msg.place(relx=0.5, rely=0.1, anchor="center")
+
+        if game_type == "shuffle":
+            tk.Label(game_container, text="Sentence Master", font=("Helvetica", 32, "bold"), fg="#F1C40F", bg=OVERLAY_COLOR).pack(pady=5)
+            tk.Label(game_container, text="还原被打乱的句子，点击下方单词填入横线，点击横线上的单词重填。", font=("Microsoft YaHei", 14), fg="#BDC3C7", bg=OVERLAY_COLOR).pack(pady=(0, 10))
+            
+            attempts_var = tk.IntVar(value=1)
+            
+            attempts_lbl = tk.Label(overlay, text="", font=("Helvetica", 22, "bold"), fg="#F1C40F", bg=OVERLAY_COLOR)
+            attempts_lbl.place(relx=0.82, rely=0.02, anchor="ne") 
+
+            def update_attempts_ui():
+                attempts_lbl.config(text=f"尝试次数: {attempts_var.get()}")
+            update_attempts_ui() 
+
+            tk.Button(overlay, text="Exit Game (Esc)", font=("Microsoft YaHei", 11), command=on_close_game, bg="#E74C3C", fg="white", relief="flat", padx=15, pady=4).place(relx=0.98, rely=0.08, anchor="ne")
+
+            raw_sentence = game_data["shuffle"]["en"]; words_only = re.findall(r"[\w']+", raw_sentence)
+            indexed_pool = [{"id": i, "word": w} for i, w in enumerate(words_only)]
+            shuffled_pool = indexed_pool[:]; random.shuffle(shuffled_pool)
+            tokens = re.findall(r"[\w']+|[^\w\s]", raw_sentence)
+            user_order = [None] * len(words_only); slot_btns, pool_btns = [], {}
+
+            def check_win():
+                nonlocal game_active
+                if None in user_order: return
+                
+                is_correct = all(user_order[i]["word"].lower() == words_only[i].lower() for i in range(len(words_only)))
+                
+                if is_correct:
+                    game_active = False; play_game_sound("submit")
+                    for btn in slot_btns: btn.config(bg="#27AE60", state="disabled")
+                    for b_id in pool_btns: pool_btns[b_id].config(state="disabled")
+                    
+                    attempts = attempts_var.get()
+                    rank_text = "Legendary!"
+                    if attempts == 1: rank_text = "Godlike!"
+                    elif attempts <= 2: rank_text = "Impressive!"
+                    elif attempts <= 4: rank_text = "Excellent!"
+                    elif attempts <= 6: rank_text = "Good Job!"
+                    else: rank_text = "Well Done!"
+                    
+                    result_msg.config(text=f"🎉 {rank_text} 🎉", fg="#2ECC71")
+
+                    tk.Label(game_container, text=f"{game_data['shuffle']['cn']}", font=("Microsoft YaHei", 14), fg="#BDC3C7", bg=OVERLAY_COLOR, wraplength=800).pack(pady=20)
+                else:
+                    attempts_var.set(attempts_var.get() + 1)
+                    update_attempts_ui()
+
+            def on_pool_click(obj):
+                if not game_active: return
+                for i in range(len(user_order)):
+                    if user_order[i] is None:
+                        play_game_sound("click")
+                        user_order[i] = obj
+                        pool_btns[obj["id"]].pack_forget()
+                        
+                        if obj["word"].lower() == words_only[i].lower():
+                            slot_btns[i].config(text=obj["word"], fg="white", bg="#27AE60")
+                        else:
+                            slot_btns[i].config(text=obj["word"], fg="white", bg=OVERLAY_COLOR)
+                            attempts_var.set(attempts_var.get() + 1)
+                            update_attempts_ui()
+                        
+                        check_win()
+                        break
+
+            def on_slot_click(idx):
+                if not game_active or user_order[idx] is None: return
+                if user_order[idx]["word"].lower() == words_only[idx].lower(): return 
+
+                play_game_sound("click"); obj = user_order[idx]; user_order[idx] = None
+                slot_btns[idx].config(text="______", fg="#5D6D7E", bg=OVERLAY_COLOR)
+                pool_btns[obj["id"]].pack(side="left", padx=5, pady=5)
+
+            slots_wrap = tk.Frame(game_container, bg=OVERLAY_COLOR)
+            slots_wrap.pack(pady=20)
+            current_slots_row = tk.Frame(slots_wrap, bg=OVERLAY_COLOR)
+            current_slots_row.pack(pady=10)
+            
+            w_idx, row_char_count = 0, 0
+            MAX_ROW_CHARS = 60 
+
+            for t in tokens:
+                if row_char_count > MAX_ROW_CHARS:
+                    current_slots_row = tk.Frame(slots_wrap, bg=OVERLAY_COLOR)
+                    current_slots_row.pack(pady=8)
+                    row_char_count = 0
+                if re.match(r"[\w']+", t):
+                    curr = w_idx
+                    btn = tk.Button(current_slots_row, text="______", font=("Helvetica", 16), fg="#5D6D7E", bg=OVERLAY_COLOR, relief="flat", command=lambda i=curr: on_slot_click(i))
+                    btn.pack(side="left", padx=5)
+                    slot_btns.append(btn)
+                    w_idx += 1; row_char_count += 10
+                else:
+                    tk.Label(current_slots_row, text=t, font=("Helvetica", 18, "bold"), fg="white", bg=OVERLAY_COLOR).pack(side="left")
+                    row_char_count += 2
+
+            pool_wrap = tk.Frame(game_container, bg=OVERLAY_COLOR)
+            pool_wrap.pack(pady=20)
+            current_pool_row = tk.Frame(pool_wrap, bg=OVERLAY_COLOR)
+            current_pool_row.pack(pady=5)
+            
+            pool_row_char_count = 0
+            for obj in shuffled_pool:
+                if pool_row_char_count > MAX_ROW_CHARS:
+                    current_pool_row = tk.Frame(pool_wrap, bg=OVERLAY_COLOR)
+                    current_pool_row.pack(pady=5)
+                    pool_row_char_count = 0
+                b = tk.Button(current_pool_row, text=obj["word"], font=("Helvetica", 14), bg="#ECF0F1", fg="#2C3E50", padx=15, pady=5, command=lambda o=obj: on_pool_click(o))
+                b.pack(side="left", padx=5, pady=5)
+                pool_btns[obj["id"]] = b
+                pool_row_char_count += len(obj["word"]) + 4
+
+        elif game_type == "wordle":
+            rule_f = tk.Frame(overlay, bg=OVERLAY_COLOR, width=320)
+            rule_f.place(relx=0.05, rely=0.5, anchor="w")
+            tk.Label(rule_f, text="Binglish Wordle", font=("Helvetica", 24, "bold"), fg="#F1C40F", bg=OVERLAY_COLOR, justify="left").pack(anchor="w", pady=10)
+            tk.Label(rule_f, text="规则：\n1. 目标：6次机会猜出5字母单词\n2. 绿色：字母存在且位置正确\n3. 黄色：字母存在但位置错\n4. 灰色：字母不在答案中", font=("Microsoft YaHei", 12), fg="#BDC3C7", bg=OVERLAY_COLOR, justify="left").pack(anchor="w")
+            
+            tk.Button(overlay, text="Exit Game (Esc)", font=("Microsoft YaHei", 11), command=on_close_game, bg="#E74C3C", fg="white", relief="flat", padx=15, pady=4).place(relx=0.98, rely=0.08, anchor="ne")
+            
+            rank_lbl = tk.Label(overlay, text="", font=("Microsoft YaHei", 24, "bold"), fg="#F1C40F", bg=OVERLAY_COLOR)
+
+            target = game_data["wordle"]["word"].lower(); t_len = len(target); guesses, cur_guess = [], []
+            grid_f = tk.Frame(game_container, bg=OVERLAY_COLOR); grid_f.pack(pady=5)
+            cells = []
+            for r in range(6):
+                r_c = []
+                for c in range(t_len):
+                    l = tk.Label(grid_f, text="", font=("Helvetica", 30, "bold"), width=2, height=1, fg="white", bg="#34495E", highlightbackground="#BDC3C7", highlightthickness=2)
+                    l.grid(row=r, column=c, padx=4, pady=4); r_c.append(l)
+                cells.append(r_c)
+            
+            kb_f = tk.Frame(game_container, bg=OVERLAY_COLOR); kb_f.pack(pady=10)
+            kb_map = {}
+            for row in ["QWERTYUIOP", "ASDFGHJKL", "ZXCVBNM"]:
+                rf = tk.Frame(kb_f, bg=OVERLAY_COLOR); rf.pack()
+                for char in row:
+                    btn = tk.Label(rf, text=char, font=("Helvetica", 12, "bold"), width=3, height=1, fg="white", bg="#5D6D7E", padx=5, pady=5)
+                    btn.pack(side="left", padx=2, pady=2); kb_map[char.lower()] = btn
+
+            wordle_def_lbl = tk.Label(game_container, text="", font=("Microsoft YaHei", 14), fg="#A9DFBF", bg=OVERLAY_COLOR, wraplength=600)
+            wordle_def_lbl.pack(pady=(10, 0))
+
+            def submit():
+                nonlocal cur_guess, game_active
+                if not game_active or len(cur_guess) < t_len: return
+                
+                g_str = "".join(cur_guess).lower()
+                
+                def verify_and_continue():
+                    nonlocal game_active, cur_guess
+                    valid_def = ""
+                    try:
+                        verify_url = f"https://ss.blueforge.org/valid?q={g_str}"
+                        v_res = requests.get(verify_url, timeout=3)
+                        if v_res.status_code == 200:
+                            valid_def = v_res.text.strip()
+                            if not valid_def:
+                                result_msg.config(text="Not in word list", fg="#E67E22")
+                                overlay.after(2000, lambda: result_msg.config(text="") if game_active else None)
+                                return
+                        else:
+                            raise Exception("Server Error")
+                    except Exception:
+                        result_msg.config(text="无法连接验证服务器，请稍后重试", fg="#E74C3C", font=("Microsoft YaHei", 18, "bold"))
+                        overlay.after(2000, lambda: result_msg.config(text="") if game_active else None)
+                        return
+                    
+                    wordle_def_lbl.config(text=f"{g_str}: {valid_def}")
+
+                    play_game_sound("submit")
+                    row = len(guesses)
+                    res_colors, t_list = [None] * t_len, list(target)
+                    
+                    for i in range(t_len):
+                        if g_str[i] == target[i]: res_colors[i] = "#2ECC71"; t_list[i] = None
+                    for i in range(t_len):
+                        if res_colors[i] is None:
+                            if g_str[i] in t_list: res_colors[i] = "#F1C40F"; t_list[t_list.index(g_str[i])] = None
+                            else: res_colors[i] = "#7F8C8D"
+                    
+                    for i, col in enumerate(res_colors):
+                        cells[row][i].config(bg=col, highlightbackground=col)
+                        if kb_map[g_str[i]].cget("bg") != "#2ECC71": kb_map[g_str[i]].config(bg=col)
+                    
+                    guesses.append(g_str)
+                    cur_guess = [] 
+
+                    if g_str == target:
+                        game_active = False
+                        ranks = ["Lucky you!", "Genius!", "Excellent!", "Impressive!", "Nice work!", "Whew!"]
+                        
+                        result_msg.config(text="✨ Success! ✨", fg="#2ECC71")
+                        rank_lbl.config(text=ranks[row])
+                        rank_lbl.place(relx=0.5, rely=0.16, anchor="center")
+                        
+                    elif len(guesses) >= 6:
+                        game_active = False
+                        result_msg.config(text=f"Hard Luck! ({target.upper()})", fg="#E74C3C")
+                        tk.Label(game_container, text=f"{game_data['wordle']['word']} {game_data['wordle']['desc']}", font=("Microsoft YaHei", 16, "bold"), fg="#F1C40F", bg=OVERLAY_COLOR, wraplength=600).pack(pady=20)
+
+                threading.Thread(target=verify_and_continue, daemon=True).start()
+
+            overlay.bind("<Key>", lambda e: (
+                (play_game_sound("click"), cur_guess.pop()) if e.keysym=="BackSpace" and cur_guess and game_active else 
+                (play_game_sound("click"), cur_guess.append(e.char.upper())) if len(e.char)==1 and e.char.isalpha() and len(cur_guess)<t_len and game_active else
+                submit() if e.keysym=="Return" and game_active else None,
+                [cells[len(guesses)][i].config(text=(cur_guess[i] if i<len(cur_guess) else "")) for i in range(t_len)] if len(guesses)<6 and game_active else None
+            ))
+
+    btn_style = {"font": ("Microsoft YaHei", 14, "bold"), "width": 20, "height": 2, "relief": "flat", "cursor": "hand2"}
+    
+    shuf_btn = tk.Button(btn_frame, text="Sentence Master", bg="#3498DB", fg="white", **btn_style, command=lambda: start_game("shuffle"))
+    shuf_btn.pack(side="left", padx=20)
+
+    wordle_btn = tk.Button(btn_frame, text="Binglish Wordle", bg="#2ECC71", fg="white", **btn_style, command=lambda: start_game("wordle"))
+    wordle_btn.pack(side="left", padx=20)
+
+    return_btn = tk.Button(lobby_frame, text=" 返回桌面 ", font=("Microsoft YaHei", 13, "bold"), 
+                           fg="white", bg="#34495E", relief="flat", padx=40, pady=10, 
+                           cursor="hand2", command=on_close_game)
+    return_btn.pack(pady=30)
+    
+    return_btn.bind("<Enter>", lambda e: return_btn.config(bg="#455A64"))
+    return_btn.bind("<Leave>", lambda e: return_btn.config(bg="#34495E"))
+
+    overlay.bind('<Escape>', on_close_game)
+    def fade(a=0):
+        if a < 0.95: a += 0.05; overlay.attributes("-alpha", a); overlay.after(20, fade, a)
+    fade(); overlay.focus_force()
+
 # Windows API 结构体定义，用于检测闲置时间
 class LASTINPUTINFO(ctypes.Structure):
     _fields_ = [("cbSize", ctypes.c_uint), ("dwTime", ctypes.c_uint)]
@@ -232,7 +538,6 @@ def is_foreground_fullscreen():
         # 判断是否充满屏幕
         if (rect.left <= 0 and rect.top <= 0 and 
             rect.right >= screen_w and rect.bottom >= screen_h):
-            # 排除桌面和任务栏的情况（简单的判断类名）
             buffer_len = 255
             class_name = ctypes.create_unicode_buffer(buffer_len)
             user32.GetClassNameW(hwnd, class_name, buffer_len)
@@ -296,12 +601,10 @@ OVERLAY_COLOR = #2C3E50
             config.read(config_path, encoding='utf-8-sig')
             if 'Settings' in config:
                 settings = config['Settings']
-                # 使用 getboolean 自动处理 0/1/true/false
                 is_rest_enabled = settings.getboolean('IS_REST_ENABLED', fallback=False)
                 REST_INTERVAL_SECONDS = settings.getint('REST_INTERVAL_SECONDS', fallback=2700)
                 IDLE_RESET_SECONDS = settings.getint('IDLE_RESET_SECONDS', fallback=300)
                 REST_LOCK_SECONDS = settings.getint('REST_LOCK_SECONDS', fallback=30)
-                # 获取字符串，去除可能的引号
                 color_val = settings.get('OVERLAY_COLOR', fallback='#2C3E50').strip().strip('"').strip("'")
                 if color_val:
                     OVERLAY_COLOR = color_val
@@ -322,14 +625,12 @@ def save_rest_enabled_to_config(enabled):
     config_path = os.path.join(os.path.dirname(get_executable_path()), CONFIG_FILENAME)
     try:
         if not os.path.exists(config_path):
-            # 如果文件被删了，重新生成
             load_config_and_init()
             return
 
         with open(config_path, 'r', encoding='utf-8-sig') as f:
             content = f.read()
         
-        # 使用正则替换 IS_REST_ENABLED = ...
         new_val = "1" if enabled else "0"
         pattern = r"(?m)(?i)(^\s*IS_REST_ENABLED\s*=\s*)([^;\r\n]*)"
         
@@ -370,11 +671,9 @@ def show_rest_overlay():
     quote_en, quote_cn = "", ""
     quote_en, quote_cn = random.choice(REST_QUOTES)
     
-    # 创建 Toplevel 窗口
     overlay = tk.Toplevel(root)
     overlay.title("Time to Rest")
     
-    # 全屏、无边框、置顶
     w = root.winfo_screenwidth()
     h = root.winfo_screenheight()
     overlay.geometry(f"{w}x{h}+0+0")
@@ -382,16 +681,25 @@ def show_rest_overlay():
     overlay.attributes("-topmost", True)
     overlay.configure(bg=OVERLAY_COLOR)
     
-    # 初始透明度为0，用于淡入效果
     overlay.attributes("-alpha", 0.0)
 
-    # UI 布局
     container = tk.Frame(overlay, bg=OVERLAY_COLOR)
     container.pack(expand=True, fill="both")
     
-    # 垂直居中 Frame
+    bottom_frame = tk.Frame(container, bg=OVERLAY_COLOR)
+    bottom_frame.pack(side="bottom", fill="x", pady=(0, 60), padx=50)
+
+    font_fact_en = ("Helvetica", 14, "italic") 
+    font_fact_cn = ("Microsoft YaHei", 12)
+    
+    lbl_fact_en = tk.Label(bottom_frame, text="", font=font_fact_en, fg="#BDC3C7", bg=OVERLAY_COLOR, wraplength=w-200)
+    lbl_fact_en.pack(side="top", pady=(0, 5))
+    
+    lbl_fact_cn = tk.Label(bottom_frame, text="正在获取冷知识...", font=font_fact_cn, fg="#7F8C8D", bg=OVERLAY_COLOR, wraplength=w-200)
+    lbl_fact_cn.pack(side="top")
+
     center_frame = tk.Frame(container, bg=OVERLAY_COLOR)
-    center_frame.place(relx=0.5, rely=0.5, anchor="center")
+    center_frame.place(relx=0.5, rely=0.45, anchor="center")
     
     font_en = ("Helvetica", 32, "bold")
     font_cn = ("Microsoft YaHei", 24)
@@ -432,7 +740,6 @@ def show_rest_overlay():
         lbl_word = tk.Label(center_frame, text=word_hint_text, font=font_word_hint, 
                             fg="#A9DFBF", bg=OVERLAY_COLOR, wraplength=w-100)
     
-    # 按钮变量
     remaining_seconds = REST_LOCK_SECONDS
     btn_text = tk.StringVar()
     btn_text.set(f"我休息好了 ({remaining_seconds}s)")
@@ -451,11 +758,36 @@ def show_rest_overlay():
                        bg="#ECF0F1", fg="#2C3E50", 
                        relief="flat", padx=30, pady=10)
     btn_ok.pack()
+
+    # === 获取冷知识 ===
+    def _fetch_and_show_fact():
+        fact_en = ""
+        fact_cn = ""
+        try:
+            res = requests.get(USELESS_FACT_URL, timeout=3)
+            if res.status_code == 200:
+                data = res.json()
+                fact_en = data.get("en", "")
+                fact_cn = data.get("cn", "")
+        except Exception as e:
+            print(f"Fetch fact error: {e}")
+        
+        def _update_ui():
+            if not is_overlay_showing: return
+            
+            if fact_en and fact_cn:
+                lbl_fact_en.config(text=f"Did you know? {fact_en}")
+                lbl_fact_cn.config(text=fact_cn)
+            else:
+                lbl_fact_cn.config(text="") 
+                
+        overlay.after(0, _update_ui)
+
+    threading.Thread(target=_fetch_and_show_fact, daemon=True).start()
     
-    # 平滑淡入逻辑
-    target_alpha = 0.9  # 最终暗度
-    animation_duration = 3000 # 持续时间 3000ms
-    step_interval = 20 # 刷新间隔 20ms
+    target_alpha = 0.95
+    animation_duration = 1000
+    step_interval = 20
     alpha_step = target_alpha / (animation_duration / step_interval)
 
     def fade_in(current_alpha=0):
@@ -522,25 +854,21 @@ def show_history_overlay(events, date_str):
                         font=hint_font, fg="#7F8C8D", bg=OVERLAY_COLOR)
     lbl_hint.pack(pady=(0, 20))
     
-    # 滚动区域容器
     canvas_container = tk.Frame(main_container, bg=OVERLAY_COLOR)
     canvas_container.pack(expand=True, fill="both")
 
     canvas = tk.Canvas(canvas_container, bg=OVERLAY_COLOR, highlightthickness=0)
-    # scrollbar = tk.Scrollbar(canvas_container, orient="vertical", command=canvas.yview)
     
     scrollable_frame = tk.Frame(canvas, bg=OVERLAY_COLOR)
 
-    # 绑定事件以调整 Canvas 滚动区域
     scrollable_frame.bind(
         "<Configure>",
         lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
     )
 
-    canvas.create_window((w//2 - 50), 0, window=scrollable_frame, anchor="n") # 居中
+    canvas.create_window((w//2 - 50), 0, window=scrollable_frame, anchor="n")
     canvas.pack(side="left", fill="both", expand=True)
 
-    # 填充事件内容
     font_year = ("Helvetica", 20, "bold")
     font_en = ("Helvetica", 18)
     font_cn = ("Microsoft YaHei", 16)
@@ -550,16 +878,13 @@ def show_history_overlay(events, date_str):
         text_en = event.get("text_en", "")
         text_cn = event.get("text_cn", "")
         
-        # 事件容器
         event_frame = tk.Frame(scrollable_frame, bg=OVERLAY_COLOR)
         event_frame.pack(fill="x", pady=15)
         
-        # 年份 + 英文 (白色)
         full_en = f"[{year}] {text_en}"
         lbl_en = tk.Label(event_frame, text=full_en, font=font_en, fg="white", bg=OVERLAY_COLOR, wraplength=w-200, justify="left")
         lbl_en.pack(anchor="w")
         
-        # 中文 (浅色，例如浅灰 #95A5A6 或 #BDC3C7)
         lbl_cn = tk.Label(event_frame, text=text_cn, font=font_cn, fg="#95A5A6", bg=OVERLAY_COLOR, wraplength=w-200, justify="left")
         lbl_cn.pack(anchor="w", pady=(5, 0))
 
@@ -593,7 +918,7 @@ def show_history_overlay(events, date_str):
     # 平滑淡入 (复用逻辑)
     target_alpha = 0.95
     step_interval = 20
-    alpha_step = target_alpha / (1000 / step_interval) # 1秒内淡入
+    alpha_step = target_alpha / (1000 / step_interval) 
 
     def fade_in_history(current_alpha=0):
         if current_alpha < target_alpha:
@@ -609,7 +934,6 @@ def show_history_overlay(events, date_str):
 def _fetch_history_thread():
     try:
         now = datetime.now()
-        # 格式化日期字符串用于标题显示 (例如 Feb. 1)
         date_str = now.strftime("%b. %d")
         
         url = f"{HISTORY_URL_BASE}?mm={now.month}&dd={now.day}"
@@ -1003,7 +1327,7 @@ def build_menu_items():
         menu_items.append(item(f'听单词 {bing_word}', lambda: threading.Thread(target=play_word_sound, daemon=True).start()))
         
     if bing_word:
-        menu_items.append(item(f'看单词{bing_word}', lambda: webbrowser.open(f"https://www.playphrase.me/#/search?q={bing_word}&language=en")))
+        menu_items.append(item(f'看单词 {bing_word}', lambda: webbrowser.open(f"https://www.playphrase.me/#/search?q={bing_word}&language=en")))
     
     if bing_url or bing_mp3:
         menu_items.append(Menu.SEPARATOR)
@@ -1032,6 +1356,7 @@ def build_menu_items():
 
     menu_items.append(Menu.SEPARATOR)
     menu_items.append(item('Today in History', on_this_day_click))
+    menu_items.append(item('Binglish Games', show_game_overlay))
     if bing_music_name and bing_music_url:
         menu_items.append(item('==Song of the Day==', None, enabled=False))
         
@@ -1063,9 +1388,10 @@ def build_menu_items():
 
 #更新墙纸任务
 def update_wallpaper_job(is_random=False):
-
     global icon, bing_word, bing_url, bing_mp3, bing_copyright, bing_copyright_url, bing_id
     global bing_music_name, bing_music_url, bing_music_desc, is_music_playing, music_process
+
+    threading.Thread(target=perform_network_check, args=(icon, True), daemon=True).start()
     
     bing_word, bing_url, bing_mp3, bing_copyright, bing_copyright_url, bing_id = None, None, None, None, None, None
     bing_music_name, bing_music_url, bing_music_desc = None, None, None
@@ -1393,7 +1719,6 @@ def quit_app(icon):
 def main():
     global root, icon, is_rest_enabled
     
-    # 添加全局高DPI感知设置，解决屏幕缩放导致遮罩无法覆盖全屏的问题
     try:
         ctypes.windll.shcore.SetProcessDpiAwareness(1) 
     except Exception:
