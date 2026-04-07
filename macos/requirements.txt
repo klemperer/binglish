@@ -1,0 +1,8 @@
+requests
+pystray
+Pillow
+playsound3
+exifread
+qrcode
+tkmacosx
+pyinstaller
