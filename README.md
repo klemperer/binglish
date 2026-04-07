@@ -1,7 +1,7 @@
 # Binglish：AI 桌面英语
 
 自动更换必应 Bing 每日壁纸，顺便学个单词（AI 生成相关图片、例句、语音解析、英语小游戏等）。
-点亮屏幕，欣赏美景，邂逅知识，聚沙成塔。
+点亮屏幕，欣赏美景，邂逅知识，聚沙成塔。For Windows & macOS
 
 - 图片 URL：https://ss.blueforge.org/bing
 - 壁纸来源：https://github.com/TimothyYe/bing-wallpaper
@@ -10,7 +10,8 @@
 - 生成式 AI 无法保证内容完全准确
 - 适用于 Windows10 及以上版本/macOS 13及以上版本，1920x1080 分辨率（其他分辨率暂未经测试）
 - 国内部分城市因网络问题，可能无法正常下载壁纸
-  <img width="1920" height="1080" alt="wallpaper" src="https://github.com/user-attachments/assets/6baf27da-3aea-4e61-a130-0b93aeefd5ed">
+
+<img width="1920" height="1080" alt="1" src="https://github.com/user-attachments/assets/92f5d84a-cc09-4581-9b17-9e113f27d2bc" />
 
 ## 下载已编译程序（Windows）
 
