@@ -24,7 +24,7 @@ import configparser
 import re
 import hashlib
 
-VERSION = "1.4.0"
+VERSION = "1.4.5"
 RELEASE_JSON_URL = "https://ss.blueforge.org/bing/release.json" 
 DOWNLOAD_URL = "https://ss.blueforge.org/bing/binglish.exe" 
 IMAGE_URL = f"https://ss.blueforge.org/bing?v={VERSION}"  
@@ -266,7 +266,8 @@ def show_game_overlay():
         game_container.place(relx=0.5, rely=0.55, anchor="center")
         
         timer_lbl = tk.Label(overlay, textvariable=timer_var, font=("Helvetica", 22, "bold"), fg="#BDC3C7", bg=OVERLAY_COLOR)
-        timer_lbl.place(relx=0.98, rely=0.02, anchor="ne")
+        #timer_lbl.place(relx=0.98, rely=0.02, anchor="ne")
+        timer_lbl.place(relx=0.02, rely=0.02, anchor="nw")
         
         game_active = True
         start_time = time.time()
@@ -484,14 +485,333 @@ def show_game_overlay():
                 submit() if e.keysym=="Return" and game_active else None,
                 [cells[len(guesses)][i].config(text=(cur_guess[i] if i<len(cur_guess) else "")) for i in range(t_len)] if len(guesses)<6 and game_active else None
             ))
+        elif game_type == "crossword":
+            game_container.place(relx=0.5, rely=0.50, anchor="center")
+            tk.Label(game_container, text="Mini Crossword", font=("Helvetica", 32, "bold"), fg="#F1C40F", bg=OVERLAY_COLOR).pack(pady=(20, 5))
+            tk.Label(game_container, text="在网格中填入正确的字母，使水平和垂直方向的单词都能吻合线索。", font=("Microsoft YaHei", 14), fg="#BDC3C7", bg=OVERLAY_COLOR).pack(pady=(0, 40))
+
+            tk.Button(overlay, text="退出游戏 (Esc)", font=("Microsoft YaHei", 11), command=on_close_game, bg="#E74C3C", fg="white", relief="flat", padx=15, pady=4).place(relx=0.98, rely=0.02, anchor="ne")
+            
+            hint_btn = tk.Button(overlay, text="💡 提示", font=("Microsoft YaHei", 11), command=lambda: give_hint(), bg="#9B59B6", fg="white", relief="flat", padx=15, pady=4)
+            hint_btn.place(relx=0.85, rely=0.02, anchor="ne") 
+
+            # 获取数据
+            cw_data = None
+            try:
+                res = requests.get("https://ss.blueforge.org/dailyCrossword", timeout=5)
+                if res.status_code == 200: cw_data = res.json().get("data")
+            except Exception: pass
+            if not cw_data:
+                result_msg.config(text="无法获取字谜数据，请检查网络", fg="#E74C3C")
+                return
+
+            cw_main_frame = tk.Frame(game_container, bg=OVERLAY_COLOR)
+            cw_main_frame.pack(pady=10, fill="both", expand=True)
+
+            left_clues_f = tk.Frame(cw_main_frame, bg=OVERLAY_COLOR)
+            left_clues_f.pack(side="left", padx=10, fill="y")
+            grid_f = tk.Frame(cw_main_frame, bg=OVERLAY_COLOR)
+            grid_f.pack(side="left", padx=20)
+            right_clues_f = tk.Frame(cw_main_frame, bg=OVERLAY_COLOR)
+            right_clues_f.pack(side="left", padx=10, fill="y")
+
+            hint_display_f = tk.Frame(game_container, bg=OVERLAY_COLOR)
+            hint_display_f.pack(pady=20)
+            
+            penalty_lbl = tk.Label(hint_display_f, text="", font=("Microsoft YaHei", 12, "bold"), fg="#E74C3C", bg=OVERLAY_COLOR)
+            penalty_lbl.pack()
+            
+            hint_display_lbl = tk.Message(hint_display_f, text="", font=("Microsoft YaHei", 13), fg="#A9DFBF", bg=OVERLAY_COLOR, justify="left", width=800)
+            hint_display_lbl.pack()
+
+            valid_cells, num_across, num_down, all_words = {}, {}, {}, []
+            for direction in ["Across", "Down"]:
+                for w in cw_data["clues"][direction]:
+                    w["dir"] = direction
+                    all_words.append(w)
+                    if direction == "Across": num_across[(w['x'], w['y'])] = w['number']
+                    else: num_down[(w['x'], w['y'])] = w['number']
+                    for i in range(w["length"]):
+                        cx = w["x"] + (i if direction == "Across" else 0)
+                        cy = w["y"] + (i if direction == "Down" else 0)
+                        valid_cells[(cx, cy)] = w["answer"][i]
+
+            # 渲染线索 - 横向
+            tk.Label(left_clues_f, text="Across (横向)", font=("Helvetica", 18, "bold"), fg="#3498DB", bg=OVERLAY_COLOR).pack(anchor="w", pady=(0, 10))
+            for c in cw_data["clues"]["Across"]:
+                lbl = tk.Label(left_clues_f, text=f"{c['number']}. {c['clue']}", font=("Microsoft YaHei", 12), fg="white", bg=OVERLAY_COLOR, wraplength=400, justify="left", cursor="hand2")
+                lbl.pack(anchor="w", pady=2)
+                
+                # 绑定点击切换中英文逻辑
+                def toggle_clue_across(event, cw=c, widget=lbl):
+                    en_text = f"{cw['number']}. {cw['clue']}"
+                    cn_text = f"{cw['number']}. {cw.get('clue_cn', '暂无翻译')}"
+                    
+                    if widget.cget("text") == en_text:
+                        widget.config(text=cn_text, fg="#F1C40F")
+                    else:
+                        widget.config(text=en_text, fg="white") 
+                
+                lbl.bind("<Button-1>", toggle_clue_across)
+
+            # 渲染线索 - 纵向
+            tk.Label(right_clues_f, text="Down (纵向)", font=("Helvetica", 18, "bold"), fg="#E74C3C", bg=OVERLAY_COLOR).pack(anchor="w", pady=(0, 10))
+            for c in cw_data["clues"]["Down"]:
+                lbl = tk.Label(right_clues_f, text=f"{c['number']}. {c['clue']}", font=("Microsoft YaHei", 12), fg="white", bg=OVERLAY_COLOR, wraplength=400, justify="left", cursor="hand2")
+                lbl.pack(anchor="w", pady=2)
+                
+                def toggle_clue_down(event, cw=c, widget=lbl):
+                    en_text = f"{cw['number']}. {cw['clue']}"
+                    cn_text = f"{cw['number']}. {cw.get('clue_cn', '暂无翻译')}"
+                    
+                    if widget.cget("text") == en_text:
+                        widget.config(text=cn_text, fg="#F1C40F")
+                    else:
+                        widget.config(text=en_text, fg="white")
+                        
+                lbl.bind("<Button-1>", toggle_clue_down)
+
+            entry_widgets = {}
+            active_direction = "Across"
+            last_focused_cell = None
+            hint_count = 0
+            hinted_cells = set()
+            locked_cells = set()
+            completed_word_ids = set()
+            
+            display_queue = []
+            display_timer = None
+
+            # 队列处理函数，间隔5秒显示下一个单词解析
+            def process_display_queue():
+                nonlocal display_timer
+                if not display_queue:
+                    display_timer = None
+                    return
+                w = display_queue.pop(0)
+                update_info_display(w)
+                if display_queue:
+                    display_timer = overlay.after(5000, process_display_queue)
+                else:
+                    display_timer = None
+
+            def queue_display(w):
+                nonlocal display_timer
+                display_queue.append(w)
+                if display_timer is None:
+                    process_display_queue()
+
+            def update_info_display(w):
+                ans, yb = w["answer"], w.get("yb", "")
+                mean, exp = w.get("meaning", ""), w.get("explanation", "")
+                
+                if exp:
+                    exp = re.sub(r'([a-zA-Z0-9\'\"]+)([\u4e00-\u9fa5])', r'\1 \2', exp)
+                    exp = re.sub(r'([\u4e00-\u9fa5])([a-zA-Z0-9\'\"]+)', r'\1 \2', exp)
+                if mean:
+                    mean = re.sub(r'([a-zA-Z0-9\'\"]+)([\u4e00-\u9fa5])', r'\1 \2', mean)
+                    mean = re.sub(r'([\u4e00-\u9fa5])([a-zA-Z0-9\'\"]+)', r'\1 \2', mean)
+
+                hint_display_lbl.config(text=f"【单词】{ans}   【音标】{yb}\n【含义】{mean}\n【解析】{exp}")
+
+            # 检查单词正确性并执行锁定
+            def check_word_completion_at(cx, cy):
+                newly_completed = []
+                for w in all_words:
+                    w_id = f"{w['dir']}_{w['number']}"
+                    if w_id in completed_word_ids:
+                        continue
+                        
+                    in_word = False
+                    for i in range(w["length"]):
+                        wx = w["x"] + (i if w["dir"] == "Across" else 0)
+                        wy = w["y"] + (i if w["dir"] == "Down" else 0)
+                        if wx == cx and wy == cy:
+                            in_word = True
+                            break
+                    
+                    if in_word:
+                        current_word_str, cells_in_word = "", []
+                        for i in range(w["length"]):
+                            wx = w["x"] + (i if w["dir"] == "Across" else 0)
+                            wy = w["y"] + (i if w["dir"] == "Down" else 0)
+                            cells_in_word.append((wx, wy))
+                            current_word_str += entry_widgets[(wx, wy)].get().strip().upper()
+                        
+                        if current_word_str == w["answer"]:
+                            newly_completed.append((w, cells_in_word))
+                            completed_word_ids.add(w_id)
+                
+                if newly_completed:
+
+                    newly_completed.sort(key=lambda item: 0 if item[0]["dir"] == "Across" else 1)
+                    
+                    for w, cells_in_word in newly_completed:
+                        queue_display(w)
+                        
+                        for (wx, wy) in cells_in_word:
+                            if (wx, wy) not in locked_cells:
+                                locked_cells.add((wx, wy))
+                                e = entry_widgets[(wx, wy)]
+                                current_fg = "#9B59B6" if (wx, wy) in hinted_cells else "#2C3E50"
+                                e.config(state="readonly", readonlybackground="#ECF0F1", fg=current_fg)
+
+            # 胜利检测与评级系统
+            def check_cw_win(event=None):
+                nonlocal game_active
+                if not game_active: return
+                for (x,y), char in valid_cells.items():
+                    if entry_widgets[(x,y)].get().strip().upper() != char:
+                        return
+                
+                game_active = False 
+                play_game_sound("submit")
+                
+                # 评级系统
+                rank_text = "Keep Trying!"
+                if hint_count == 0: rank_text = "Genius!"
+                elif hint_count <= 2: rank_text = "Excellent!"
+                
+                result_msg.config(text=f"✨ {rank_text} ✨", fg="#2ECC71")
+                
+                for (x, y), w in entry_widgets.items():
+                    final_fg = "#8E44AD" if (x,y) in hinted_cells else "#27AE60"
+                    w.config(state="disabled", disabledbackground="#D5F5E3", disabledforeground=final_fg)
+
+            # 提示逻辑与惩罚机制
+            def give_hint():
+                nonlocal start_time, hint_count
+                if not game_active: return
+                unsolved = []
+                for w in all_words:
+                    word_str = "".join([entry_widgets[(w['x']+(i if w['dir']=='Across' else 0), w['y']+(i if w['dir']=='Down' else 0))].get().strip().upper() for i in range(w['length'])])
+                    if word_str != w["answer"]: unsolved.append(w)
+                
+                if unsolved:
+                    w = random.choice(unsolved)
+                    cells_modified = []
+                    for i in range(w["length"]):
+                        cx = w["x"] + (i if w["dir"] == "Across" else 0)
+                        cy = w["y"] + (i if w["dir"] == "Down" else 0)
+                        e = entry_widgets[(cx, cy)]
+                        
+                        # 临时解除只读状态以填入提示
+                        if e.cget("state") == "readonly": e.config(state="normal")
+                        e.delete(0, tk.END)
+                        e.insert(0, w["answer"][i])
+                        e.config(fg="#9B59B6")
+                        hinted_cells.add((cx, cy))
+                        cells_modified.append((cx, cy))
+                    
+                    play_game_sound("click")
+                    
+                    # 惩罚机制：每次加30秒，增加计数
+                    start_time -= 30
+                    hint_count += 1
+                    penalty_lbl.config(text=f"⏳ 触发提示，总时间增加30秒！(当前已提示: {hint_count}次)")
+                    
+                    # 锁定被提示的单词，以及它可能顺带完成的交叉单词
+                    for cx, cy in cells_modified:
+                        check_word_completion_at(cx, cy)
+                        
+                    check_cw_win()
+
+            # 绘制 5x5 网格
+            for y in range(5):
+                for x in range(5):
+                    cell_f = tk.Frame(grid_f, width=65, height=65, bg="#2C3E50")
+                    cell_f.grid(row=y, column=x, padx=2, pady=2)
+                    cell_f.grid_propagate(False)
+                    
+                    if (x, y) in valid_cells:
+                        e = tk.Entry(cell_f, font=("Helvetica", 24, "bold"), justify="center", fg="#2C3E50", bg="#ECF0F1", relief="flat")
+                        e.place(relx=0, rely=0, relwidth=1, relheight=1)
+                        entry_widgets[(x, y)] = e
+                        
+                        if (x, y) in num_across:
+                            lbl_a = tk.Label(cell_f, text=str(num_across[(x, y)]), font=("Helvetica", 8, "bold"), fg="#3498DB", bg="#ECF0F1", cursor="xterm")
+                            lbl_a.place(x=2, y=0)
+                            lbl_a.bind("<Button-1>", lambda event, target=e: target.focus_set())
+                        
+                        if (x, y) in num_down:
+                            lbl_d = tk.Label(cell_f, text=str(num_down[(x, y)]), font=("Helvetica", 8, "bold"), fg="#E74C3C", bg="#ECF0F1", cursor="xterm")
+                            lbl_d.place(x=45, y=0) 
+                            lbl_d.bind("<Button-1>", lambda event, target=e: target.focus_set())
+                        
+                        def on_focus(event, cx=x, cy=y):
+                            nonlocal last_focused_cell
+                            last_focused_cell = (cx, cy)
+
+                        def on_click(event, cx=x, cy=y):
+                            nonlocal active_direction, last_focused_cell
+                            if last_focused_cell == (cx, cy):
+                                active_direction = "Down" if active_direction == "Across" else "Across"
+
+                        e.bind("<FocusIn>", on_focus)
+                        e.bind("<Button-1>", on_click)
+
+                        def on_key(event, cx=x, cy=y, widget=e):
+                            nonlocal active_direction
+                            if not game_active: return
+
+                            # 方向键导航
+                            if event.keysym in ["Left", "Right", "Up", "Down"]:
+                                if event.keysym == "Left": active_direction = "Across"; (cx-1, cy) in entry_widgets and entry_widgets[(cx-1, cy)].focus_set()
+                                elif event.keysym == "Right": active_direction = "Across"; (cx+1, cy) in entry_widgets and entry_widgets[(cx+1, cy)].focus_set()
+                                elif event.keysym == "Up": active_direction = "Down"; (cx, cy-1) in entry_widgets and entry_widgets[(cx, cy-1)].focus_set()
+                                elif event.keysym == "Down": active_direction = "Down"; (cx, cy+1) in entry_widgets and entry_widgets[(cx, cy+1)].focus_set()
+                                return
+
+                            # 退格逻辑：跳格不删锁定
+                            if event.keysym == "BackSpace":
+                                if widget.cget("state") == "normal": widget.delete(0, tk.END)
+                                px, py = (cx - 1, cy) if active_direction == "Across" else (cx, cy - 1)
+                                if (px, py) in entry_widgets: entry_widgets[(px, py)].focus_set()
+                                return
+
+                            # 如果当前格子已被锁定，忽略键盘输入直接跳向下一格
+                            if widget.cget("state") == "readonly":
+                                nx, ny = (cx + 1, cy) if active_direction == "Across" else (cx, cy + 1)
+                                if (nx, ny) in entry_widgets: entry_widgets[(nx, ny)].focus_set()
+                                return
+
+                            val = widget.get().upper()
+                            widget.delete(0, tk.END)
+                            if val and val.isalpha():
+                                char = val[-1]
+                                widget.insert(0, char)
+                                widget.config(fg="#2C3E50") 
+                                
+                                if game_active: 
+                                    check_word_completion_at(cx, cy)
+                                check_cw_win()
+                                
+                                # 输入完成后自动跳向下一格
+                                nx, ny = (cx + 1, cy) if active_direction == "Across" else (cx, cy + 1)
+                                if (nx, ny) in entry_widgets: entry_widgets[(nx, ny)].focus_set()
+
+                        e.bind("<KeyRelease>", on_key)
+                    else:
+                        tk.Label(cell_f, bg="#1C2833").place(relx=0, rely=0, relwidth=1, relheight=1)
+            tip_f = tk.Frame(game_container, bg=OVERLAY_COLOR)
+            tip_f.pack(side="bottom", pady=(20, 0))
+            
+            tk.Label(tip_f, 
+                     text="💡 小提示：用鼠标点击线索可以切换查看翻译。线索解析由AI生成，仅供参考。", 
+                     font=("Microsoft YaHei", 11, "italic"), 
+                     fg="#7F8C8D", 
+                     bg=OVERLAY_COLOR).pack()
 
     btn_style = {"font": ("Microsoft YaHei", 14, "bold"), "width": 20, "height": 2, "relief": "flat", "cursor": "hand2"}
     
     shuf_btn = tk.Button(btn_frame, text="Sentence Master", bg="#3498DB", fg="white", **btn_style, command=lambda: start_game("shuffle"))
-    shuf_btn.pack(side="left", padx=20)
+    shuf_btn.pack(side="left", padx=10)
 
     wordle_btn = tk.Button(btn_frame, text="Binglish Wordle", bg="#2ECC71", fg="white", **btn_style, command=lambda: start_game("wordle"))
-    wordle_btn.pack(side="left", padx=20)
+    wordle_btn.pack(side="left", padx=10)
+
+    crossword_btn = tk.Button(btn_frame, text="Mini Crossword", bg="#9B59B6", fg="white", **btn_style, command=lambda: start_game("crossword"))
+    crossword_btn.pack(side="left", padx=10)
 
     return_btn = tk.Button(lobby_frame, text=" 返回桌面 ", font=("Microsoft YaHei", 13, "bold"), 
                            fg="white", bg="#34495E", relief="flat", padx=40, pady=10, 
@@ -1094,7 +1414,7 @@ def set_as_wallpaper(image_path):
 #检查互联网连接
 def check_internet_connection():
     try:
-        requests.get("https://www.bing.com", timeout=5)
+        requests.get("https://www.bing.com", timeout=10)
         return True
     except requests.ConnectionError:
         return False
@@ -1717,6 +2037,21 @@ def quit_app(icon):
         root.destroy()
 
 def main():
+    
+    #增加Debug模式
+    try:
+        config_path = os.path.join(os.path.dirname(get_executable_path()), CONFIG_FILENAME)
+        temp_config = configparser.ConfigParser()
+        if os.path.exists(config_path):
+            temp_config.read(config_path, encoding='utf-8-sig')
+            if 'Settings' in temp_config and temp_config['Settings'].get('DEBUG_ENABLED', '0') == '1':
+                log_path = os.path.join(os.path.dirname(get_executable_path()), "binglish_debug.log")
+                sys.stdout = open(log_path, "a", encoding="utf-8", buffering=1)
+                sys.stderr = sys.stdout
+                print(f"\n{'='*40}\n[{time.ctime()}] 应用程序启动 (Debug模式开启)\n{'='*40}")
+    except Exception:
+        pass
+
     global root, icon, is_rest_enabled
     
     try:
