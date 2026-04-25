@@ -1,22 +1,23 @@
-# binglish：AI 桌面英语
+# Binglish：AI 桌面英语
 
-自动更换必应 Bing 每日壁纸，顺便学个单词（AI 生成相关图片、例句、语音解析等）。
-点亮屏幕，欣赏美景，邂逅知识，聚沙成塔。
+自动更换必应 Bing 每日壁纸，顺便学个单词（AI 生成相关图片、例句、语音解析、英语小游戏等）。
+点亮屏幕，欣赏美景，邂逅知识，聚沙成塔。For Windows & macOS
 
 - 图片 URL：https://ss.blueforge.org/bing
 - 壁纸来源：https://github.com/TimothyYe/bing-wallpaper
 - 单词难度：CET-4 至 GRE 随机（排除所谓 Bad words，列表来自https://github.com/LDNOOBW/List-of-Dirty-Naughty-Obscene-and-Otherwise-Bad-Words）
 - 更新频率：每 3 小时刷新一次
 - 生成式 AI 无法保证内容完全准确
-- 适用于 Windows10 及以上版本，1920x1080 分辨率（其他分辨率暂未经测试）
+- 适用于 Windows10 及以上版本/macOS 13及以上版本，1920x1080 分辨率（其他分辨率暂未经测试）
 - 国内部分城市因网络问题，可能无法正常下载壁纸
-  <img width="1920" height="1080" alt="wallpaper" src="https://github.com/user-attachments/assets/6baf27da-3aea-4e61-a130-0b93aeefd5ed">
 
-## 下载已编译程序
+<img width="1920" height="1080" alt="1" src="https://github.com/user-attachments/assets/92f5d84a-cc09-4581-9b17-9e113f27d2bc" />
+
+## 下载已编译程序（Windows）
 
 [Github releases](https://github.com/klemperer/binglish/releases/download/v1.4.0/binglish.exe) 或者 [备用下载地址](https://ss.blueforge.org/bing/binglish.exe)
 
-## 或 自行打包
+## 或 自行打包（Windows）
 
 ```Bash
 git clone https://github.com/klemperer/binglish/
@@ -26,7 +27,7 @@ pip install pyinstaller
 bundle.bat
 ```
 
-## 运行
+## 运行（Windows）
 
 双击binglish.exe（如自行打包，可在项目下dist目录中找到该文件）即可运行，无需安装。程序运行后将最小化至右侧任务栏中，可在右键菜单中选择开机自动运行。
 
@@ -35,6 +36,26 @@ bundle.bat
 ```Bash
 python binglish.py
 ```
+
+## 下载已编译程序（macOS）
+
+[Github releases](https://github.com/klemperer/binglish/releases/download/macOS_v1.0.2/binglish_mac.zip)
+
+## 或 自行打包（macOS）
+
+```Bash
+git clone https://github.com/klemperer/binglish/
+cd binglish/macOS
+python3 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+pyinstaller --onefile --windowed --icon=binglish_mac.png --add-data "binglish_mac.png:." binglish_mac.py
+```
+
+## 运行（macOS）
+
+双击binglish_mac.app（如自行打包，可在项目下dist目录中找到该文件）即可运行，无需安装。程序运行后将最小化至右侧任务栏中，可在右键菜单中选择开机自动运行。
+
 ## 右键菜单说明
 
 - 查单词：跳转至必应词典进一步了解单词相关用法
