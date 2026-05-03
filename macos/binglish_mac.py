@@ -23,7 +23,7 @@ try:
 except AttributeError:
     pass
 
-VERSION = "1.0.2"
+VERSION = "1.0.3"
 RELEASE_JSON_URL = "https://ss.blueforge.org/bing/release_mac.json" 
 DOWNLOAD_URL = "https://ss.blueforge.org/bing/binglish_mac"          
 IMAGE_URL = f"https://ss.blueforge.org/bing?os=mac&v={VERSION}"  
@@ -390,11 +390,11 @@ def proc_rest_overlay(quote_en, quote_cn, lock_seconds, bg_color, current_word, 
 def proc_game_overlay(bg_color, game_data_url):
     """
     功能：独立进程中渲染 Binglish Games 游戏大厅及游戏内容。
-    负责游戏数据拉取、游戏界面切换，并包含 Sentence Master (句子重组) 和 Wordle (单词猜谜) 的所有游戏逻辑与判定动画。
+    负责游戏数据拉取、游戏界面切换，并包含 Sentence Master, Wordle 和 Mini Crossword 的所有游戏逻辑与判定动画。
     """
     import tkinter as tk
     from tkmacosx import Button as MacButton
-    import requests, re, random, os, threading
+    import requests, re, random, os, threading, time
     import subprocess
     
     overlay = tk.Tk()
@@ -417,6 +417,15 @@ def proc_game_overlay(bg_color, game_data_url):
         except: pass
 
     game_active = False
+    start_time = 0
+    timer_var = tk.StringVar(value="Time: 00:00")
+    
+    def update_timer():
+        if game_active:
+            elapsed = int(time.time() - start_time)
+            timer_var.set(f"Time: {elapsed//60:02d}:{elapsed%60:02d}")
+            overlay.after(1000, update_timer)
+
     lobby_frame = tk.Frame(overlay, bg=bg_color)
     lobby_frame.place(relx=0.5, rely=0.5, anchor="center")
     
@@ -427,15 +436,19 @@ def proc_game_overlay(bg_color, game_data_url):
     game_container = tk.Frame(overlay, bg=bg_color)
 
     def start_game(game_type):
-        nonlocal game_active
+        nonlocal game_active, start_time
         game_active = True
+        start_time = time.time()
+        update_timer()
+        
         lobby_frame.destroy() 
         game_container.place(relx=0.5, rely=0.55, anchor="center")
         
+        timer_lbl = tk.Label(overlay, textvariable=timer_var, font=("Helvetica", 24, "bold"), fg="#BDC3C7", bg=bg_color)
+        timer_lbl.place(relx=0.02, rely=0.02, anchor="nw")
+        
         result_msg = tk.Label(overlay, text="", font=("Microsoft YaHei", 36, "bold"), bg=bg_color)
         result_msg.place(relx=0.5, rely=0.1, anchor="center")
-        
-        MacButton(overlay, text="Exit Game (Esc)", font=("Microsoft YaHei", 16), command=overlay.destroy, bg="#E74C3C", fg="white", borderless=1, padx=20, pady=8).place(relx=0.98, rely=0.08, anchor="ne")
 
         if game_type == "shuffle":
             tk.Label(game_container, text="Sentence Master", font=("Helvetica", 48, "bold"), fg="#F1C40F", bg=bg_color).pack(pady=10)
@@ -446,6 +459,8 @@ def proc_game_overlay(bg_color, game_data_url):
             attempts_lbl.place(relx=0.80, rely=0.02, anchor="ne") 
             def update_attempts_ui(): attempts_lbl.config(text=f"尝试次数: {attempts_var.get()}")
             update_attempts_ui()
+
+            MacButton(overlay, text="Exit Game (Esc)", font=("Microsoft YaHei", 16), command=overlay.destroy, bg="#E74C3C", fg="white", borderless=1, padx=20, pady=8).place(relx=0.98, rely=0.08, anchor="ne")
 
             raw_sentence = game_data["shuffle"]["en"]; words_only = re.findall(r"[\w']+", raw_sentence)
             indexed_pool = [{"id": i, "word": w} for i, w in enumerate(words_only)]
@@ -523,6 +538,8 @@ def proc_game_overlay(bg_color, game_data_url):
             tk.Label(rule_f, text="Binglish Wordle", font=("Helvetica", 36, "bold"), fg="#F1C40F", bg=bg_color, justify="left").pack(anchor="w", pady=15)
             tk.Label(rule_f, text="规则：\n1. 目标：6次机会猜出5字母单词\n2. 绿色：字母存在且位置正确\n3. 黄色：字母存在但位置错\n4. 灰色：字母不在答案中", font=("Microsoft YaHei", 18), fg="#BDC3C7", bg=bg_color, justify="left").pack(anchor="w")
 
+            MacButton(overlay, text="Exit Game (Esc)", font=("Microsoft YaHei", 16), command=overlay.destroy, bg="#E74C3C", fg="white", borderless=1, padx=20, pady=8).place(relx=0.98, rely=0.08, anchor="ne")
+            
             rank_lbl = tk.Label(overlay, text="", font=("Microsoft YaHei", 32, "bold"), fg="#F1C40F", bg=bg_color)
             target = game_data["wordle"]["word"].lower(); t_len = len(target); guesses, cur_guess = [], []
             
@@ -607,10 +624,299 @@ def proc_game_overlay(bg_color, game_data_url):
                 submit() if e.keysym=="Return" and game_active else None,
                 [cells[len(guesses)][i].config(text=(cur_guess[i] if i<len(cur_guess) else "")) for i in range(t_len)] if len(guesses)<6 and game_active else None
             ))
+            
+        elif game_type == "crossword":
+            game_container.place(relx=0.5, rely=0.50, anchor="center")
+            tk.Label(game_container, text="Mini Crossword", font=("Helvetica", 36, "bold"), fg="#F1C40F", bg=bg_color).pack(pady=(20, 5)) 
+            tk.Label(game_container, text="在网格中填入正确的字母，使水平和垂直方向的单词都能吻合线索。", font=("Microsoft YaHei", 18), fg="#BDC3C7", bg=bg_color).pack(pady=(0, 40))
 
-    btn_style = {"font": ("Microsoft YaHei", 20, "bold"), "borderless": 1, "padx": 40, "pady": 20}
-    MacButton(btn_frame, text="Sentence Master", bg="#3498DB", fg="white", **btn_style, command=lambda: start_game("shuffle")).pack(side="left", padx=30)
-    MacButton(btn_frame, text="Binglish Wordle", bg="#2ECC71", fg="white", **btn_style, command=lambda: start_game("wordle")).pack(side="left", padx=30)
+            MacButton(overlay, text="退出游戏 (Esc)", font=("Microsoft YaHei", 14), command=overlay.destroy, bg="#E74C3C", fg="white", borderless=1, padx=20, pady=8).place(relx=0.98, rely=0.02, anchor="ne")
+            
+            hint_btn = MacButton(overlay, text="💡 提示", font=("Microsoft YaHei", 14), command=lambda: give_hint(), bg="#9B59B6", fg="white", borderless=1, padx=20, pady=8)
+            hint_btn.place(relx=0.85, rely=0.02, anchor="ne") 
+
+            cw_data = None
+            try:
+                res = requests.get("https://ss.blueforge.org/dailyCrossword", timeout=5)
+                if res.status_code == 200: cw_data = res.json().get("data")
+            except Exception: pass
+            if not cw_data:
+                result_msg.config(text="无法获取字谜数据，请检查网络", fg="#E74C3C")
+                return
+
+            cw_main_frame = tk.Frame(game_container, bg=bg_color)
+            cw_main_frame.pack(pady=10, fill="both", expand=True)
+
+            left_clues_f = tk.Frame(cw_main_frame, bg=bg_color)
+            left_clues_f.pack(side="left", padx=10, fill="y")
+            grid_f = tk.Frame(cw_main_frame, bg=bg_color)
+            grid_f.pack(side="left", padx=20)
+            right_clues_f = tk.Frame(cw_main_frame, bg=bg_color)
+            right_clues_f.pack(side="left", padx=10, fill="y")
+
+            hint_display_f = tk.Frame(game_container, bg=bg_color)
+            hint_display_f.pack(pady=20)
+            
+            penalty_lbl = tk.Label(hint_display_f, text="", font=("Microsoft YaHei", 16, "bold"), fg="#E74C3C", bg=bg_color)
+            penalty_lbl.pack()
+            
+            hint_display_lbl = tk.Message(hint_display_f, text="", font=("Microsoft YaHei", 18), fg="#A9DFBF", bg=bg_color, justify="left", width=900)
+            hint_display_lbl.pack()
+
+            valid_cells, num_across, num_down, all_words = {}, {}, {}, []
+            for direction in ["Across", "Down"]:
+                for w in cw_data["clues"][direction]:
+                    w["dir"] = direction
+                    all_words.append(w)
+                    if direction == "Across": num_across[(w['x'], w['y'])] = w['number']
+                    else: num_down[(w['x'], w['y'])] = w['number']
+                    for i in range(w["length"]):
+                        cx = w["x"] + (i if direction == "Across" else 0)
+                        cy = w["y"] + (i if direction == "Down" else 0)
+                        valid_cells[(cx, cy)] = w["answer"][i]
+
+            # 渲染线索 - 横向
+            tk.Label(left_clues_f, text="Across (横向)", font=("Helvetica", 22, "bold"), fg="#3498DB", bg=bg_color).pack(anchor="w", pady=(0, 10))
+            for c in cw_data["clues"]["Across"]:
+                lbl = tk.Label(left_clues_f, text=f"{c['number']}. {c['clue']}", font=("Microsoft YaHei", 16), fg="white", bg=bg_color, wraplength=450, justify="left", cursor="hand2")
+                lbl.pack(anchor="w", pady=3)
+                
+                def toggle_clue_across(event, cw=c, widget=lbl):
+                    en_text = f"{cw['number']}. {cw['clue']}"
+                    cn_text = f"{cw['number']}. {cw.get('clue_cn', '暂无翻译')}"
+                    
+                    if widget.cget("text") == en_text: widget.config(text=cn_text, fg="#F1C40F")
+                    else: widget.config(text=en_text, fg="white") 
+                
+                lbl.bind("<Button-1>", toggle_clue_across)
+
+            # 渲染线索 - 纵向
+            tk.Label(right_clues_f, text="Down (纵向)", font=("Helvetica", 22, "bold"), fg="#E74C3C", bg=bg_color).pack(anchor="w", pady=(0, 10))
+            for c in cw_data["clues"]["Down"]:
+                lbl = tk.Label(right_clues_f, text=f"{c['number']}. {c['clue']}", font=("Microsoft YaHei", 16), fg="white", bg=bg_color, wraplength=450, justify="left", cursor="hand2")
+                lbl.pack(anchor="w", pady=3)
+                
+                def toggle_clue_down(event, cw=c, widget=lbl):
+                    en_text = f"{cw['number']}. {cw['clue']}"
+                    cn_text = f"{cw['number']}. {cw.get('clue_cn', '暂无翻译')}"
+                    
+                    if widget.cget("text") == en_text: widget.config(text=cn_text, fg="#F1C40F")
+                    else: widget.config(text=en_text, fg="white")
+                        
+                lbl.bind("<Button-1>", toggle_clue_down)
+
+            entry_widgets = {}
+            active_direction = "Across"
+            last_focused_cell = None
+            hint_count = 0
+            hinted_cells = set()
+            locked_cells = set()
+            completed_word_ids = set()
+            
+            display_queue = []
+            display_timer = None
+
+            def process_display_queue():
+                nonlocal display_timer
+                if not display_queue:
+                    display_timer = None; return
+                w = display_queue.pop(0)
+                update_info_display(w)
+                if display_queue: display_timer = overlay.after(5000, process_display_queue)
+                else: display_timer = None
+
+            def queue_display(w):
+                nonlocal display_timer
+                display_queue.append(w)
+                if display_timer is None: process_display_queue()
+
+            def update_info_display(w):
+                ans, yb = w["answer"], w.get("yb", "")
+                mean, exp = w.get("meaning", ""), w.get("explanation", "")
+                
+                if exp:
+                    exp = re.sub(r'([a-zA-Z0-9\'\"]+)([\u4e00-\u9fa5])', r'\1 \2', exp)
+                    exp = re.sub(r'([\u4e00-\u9fa5])([a-zA-Z0-9\'\"]+)', r'\1 \2', exp)
+                if mean:
+                    mean = re.sub(r'([a-zA-Z0-9\'\"]+)([\u4e00-\u9fa5])', r'\1 \2', mean)
+                    mean = re.sub(r'([\u4e00-\u9fa5])([a-zA-Z0-9\'\"]+)', r'\1 \2', mean)
+
+                hint_display_lbl.config(text=f"【单词】{ans}   【音标】{yb}\n【含义】{mean}\n【解析】{exp}")
+
+            def check_word_completion_at(cx, cy):
+                newly_completed = []
+                for w in all_words:
+                    w_id = f"{w['dir']}_{w['number']}"
+                    if w_id in completed_word_ids: continue
+                        
+                    in_word = False
+                    for i in range(w["length"]):
+                        wx = w["x"] + (i if w["dir"] == "Across" else 0)
+                        wy = w["y"] + (i if w["dir"] == "Down" else 0)
+                        if wx == cx and wy == cy:
+                            in_word = True; break
+                    
+                    if in_word:
+                        current_word_str, cells_in_word = "", []
+                        for i in range(w["length"]):
+                            wx = w["x"] + (i if w["dir"] == "Across" else 0)
+                            wy = w["y"] + (i if w["dir"] == "Down" else 0)
+                            cells_in_word.append((wx, wy))
+                            current_word_str += entry_widgets[(wx, wy)].get().strip().upper()
+                        
+                        if current_word_str == w["answer"]:
+                            newly_completed.append((w, cells_in_word))
+                            completed_word_ids.add(w_id)
+                
+                if newly_completed:
+                    newly_completed.sort(key=lambda item: 0 if item[0]["dir"] == "Across" else 1)
+                    
+                    for w, cells_in_word in newly_completed:
+                        queue_display(w)
+                        
+                        for (wx, wy) in cells_in_word:
+                            if (wx, wy) not in locked_cells:
+                                locked_cells.add((wx, wy))
+                                e = entry_widgets[(wx, wy)]
+                                current_fg = "#9B59B6" if (wx, wy) in hinted_cells else "#2C3E50"
+                                e.config(state="readonly", readonlybackground="#ECF0F1", fg=current_fg)
+
+            def check_cw_win(event=None):
+                nonlocal game_active
+                if not game_active: return
+                for (x,y), char in valid_cells.items():
+                    if entry_widgets[(x,y)].get().strip().upper() != char:
+                        return
+                
+                game_active = False 
+                play_sound("submit")
+                
+                rank_text = "Keep Trying!"
+                if hint_count == 0: rank_text = "Genius!"
+                elif hint_count <= 2: rank_text = "Excellent!"
+                
+                result_msg.config(text=f"✨ {rank_text} ✨", fg="#2ECC71")
+                
+                for (x, y), w in entry_widgets.items():
+                    final_fg = "#8E44AD" if (x,y) in hinted_cells else "#27AE60"
+                    w.config(state="disabled", disabledbackground="#D5F5E3", disabledforeground=final_fg)
+
+            def give_hint():
+                nonlocal start_time, hint_count
+                if not game_active: return
+                unsolved = []
+                for w in all_words:
+                    word_str = "".join([entry_widgets[(w['x']+(i if w['dir']=='Across' else 0), w['y']+(i if w['dir']=='Down' else 0))].get().strip().upper() for i in range(w['length'])])
+                    if word_str != w["answer"]: unsolved.append(w)
+                
+                if unsolved:
+                    w = random.choice(unsolved)
+                    cells_modified = []
+                    for i in range(w["length"]):
+                        cx = w["x"] + (i if w["dir"] == "Across" else 0)
+                        cy = w["y"] + (i if w["dir"] == "Down" else 0)
+                        e = entry_widgets[(cx, cy)]
+                        
+                        if e.cget("state") == "readonly": e.config(state="normal")
+                        e.delete(0, tk.END)
+                        e.insert(0, w["answer"][i])
+                        e.config(fg="#9B59B6")
+                        hinted_cells.add((cx, cy))
+                        cells_modified.append((cx, cy))
+                    
+                    play_sound("click")
+                    
+                    start_time -= 30
+                    hint_count += 1
+                    penalty_lbl.config(text=f"⏳ 触发提示，总时间增加30秒！(当前已提示: {hint_count}次)")
+                    
+                    for cx, cy in cells_modified: check_word_completion_at(cx, cy)
+                    check_cw_win()
+
+            for y in range(5):
+                for x in range(5):
+                    cell_f = tk.Frame(grid_f, width=70, height=70, bg="#2C3E50") 
+                    cell_f.grid(row=y, column=x, padx=2, pady=2)
+                    cell_f.grid_propagate(False)
+                    
+                    if (x, y) in valid_cells:
+                        e = tk.Entry(cell_f, font=("Helvetica", 28, "bold"), justify="center", fg="#2C3E50", bg="#ECF0F1", relief="flat")
+                        e.place(relx=0, rely=0, relwidth=1, relheight=1)
+                        entry_widgets[(x, y)] = e
+                        
+                        if (x, y) in num_across:
+                            lbl_a = tk.Label(cell_f, text=str(num_across[(x, y)]), font=("Helvetica", 10, "bold"), fg="#3498DB", bg="#ECF0F1", cursor="xterm")
+                            lbl_a.place(x=2, y=0)
+                            lbl_a.bind("<Button-1>", lambda event, target=e: target.focus_set())
+                        
+                        if (x, y) in num_down:
+                            lbl_d = tk.Label(cell_f, text=str(num_down[(x, y)]), font=("Helvetica", 10, "bold"), fg="#E74C3C", bg="#ECF0F1", cursor="xterm")
+                            lbl_d.place(x=50, y=0) 
+                            lbl_d.bind("<Button-1>", lambda event, target=e: target.focus_set())
+                        
+                        def on_focus(event, cx=x, cy=y):
+                            nonlocal last_focused_cell
+                            last_focused_cell = (cx, cy)
+
+                        def on_click(event, cx=x, cy=y):
+                            nonlocal active_direction, last_focused_cell
+                            if last_focused_cell == (cx, cy):
+                                active_direction = "Down" if active_direction == "Across" else "Across"
+
+                        e.bind("<FocusIn>", on_focus)
+                        e.bind("<Button-1>", on_click)
+
+                        def on_key(event, cx=x, cy=y, widget=e):
+                            nonlocal active_direction
+                            if not game_active: return
+
+                            if event.keysym in ["Left", "Right", "Up", "Down"]:
+                                if event.keysym == "Left": active_direction = "Across"; (cx-1, cy) in entry_widgets and entry_widgets[(cx-1, cy)].focus_set()
+                                elif event.keysym == "Right": active_direction = "Across"; (cx+1, cy) in entry_widgets and entry_widgets[(cx+1, cy)].focus_set()
+                                elif event.keysym == "Up": active_direction = "Down"; (cx, cy-1) in entry_widgets and entry_widgets[(cx, cy-1)].focus_set()
+                                elif event.keysym == "Down": active_direction = "Down"; (cx, cy+1) in entry_widgets and entry_widgets[(cx, cy+1)].focus_set()
+                                return
+
+                            if event.keysym == "BackSpace":
+                                if widget.cget("state") == "normal": widget.delete(0, tk.END)
+                                px, py = (cx - 1, cy) if active_direction == "Across" else (cx, cy - 1)
+                                if (px, py) in entry_widgets: entry_widgets[(px, py)].focus_set()
+                                return
+
+                            if widget.cget("state") == "readonly":
+                                nx, ny = (cx + 1, cy) if active_direction == "Across" else (cx, cy + 1)
+                                if (nx, ny) in entry_widgets: entry_widgets[(nx, ny)].focus_set()
+                                return
+
+                            val = widget.get().upper()
+                            widget.delete(0, tk.END)
+                            if val and val.isalpha():
+                                char = val[-1]
+                                widget.insert(0, char)
+                                widget.config(fg="#2C3E50") 
+                                
+                                if game_active: check_word_completion_at(cx, cy)
+                                check_cw_win()
+                                
+                                nx, ny = (cx + 1, cy) if active_direction == "Across" else (cx, cy + 1)
+                                if (nx, ny) in entry_widgets: entry_widgets[(nx, ny)].focus_set()
+
+                        e.bind("<KeyRelease>", on_key)
+                    else:
+                        tk.Label(cell_f, bg="#1C2833").place(relx=0, rely=0, relwidth=1, relheight=1)
+            tip_f = tk.Frame(game_container, bg=bg_color)
+            tip_f.pack(side="bottom", pady=(20, 0))
+            
+            tk.Label(tip_f, 
+                     text="💡 小提示：用鼠标点击线索可以切换查看翻译。线索解析由AI生成，仅供参考。", 
+                     font=("Microsoft YaHei", 14, "italic"), 
+                     fg="#7F8C8D", 
+                     bg=bg_color).pack()
+
+    btn_style = {"font": ("Microsoft YaHei", 20, "bold"), "borderless": 1, "padx": 20, "pady": 20}
+    MacButton(btn_frame, text="Sentence Master", bg="#3498DB", fg="white", **btn_style, command=lambda: start_game("shuffle")).pack(side="left", padx=15)
+    MacButton(btn_frame, text="Binglish Wordle", bg="#2ECC71", fg="white", **btn_style, command=lambda: start_game("wordle")).pack(side="left", padx=15)
+    MacButton(btn_frame, text="Mini Crossword", bg="#9B59B6", fg="white", **btn_style, command=lambda: start_game("crossword")).pack(side="left", padx=15)
     
     return_btn = MacButton(lobby_frame, text=" 返回桌面 ", font=("Microsoft YaHei", 18, "bold"), fg="white", bg="#34495E", borderless=1, padx=60, pady=15, command=overlay.destroy)
     return_btn.pack(pady=40)
