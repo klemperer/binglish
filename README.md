@@ -91,3 +91,12 @@ pip install tk
 
 #### 程序不能正常运行（黑框闪退）
 尝试将程序移动至非中文路径的目录下再双击运行。
+## Star History
+
+<a href="https://www.star-history.com/?repos=klemperer%2Fbinglish&type=date&legend=top-left">
+ <picture>
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=klemperer/binglish&type=date&theme=dark&legend=top-left" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=klemperer/binglish&type=date&legend=top-left" />
+   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=klemperer/binglish&type=date&legend=top-left" />
+ </picture>
+</a>
