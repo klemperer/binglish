@@ -24,7 +24,7 @@ import configparser
 import re
 import hashlib
 
-VERSION = "1.4.5"
+VERSION = "1.4.6"
 RELEASE_JSON_URL = "https://ss.blueforge.org/bing/release.json" 
 DOWNLOAD_URL = "https://ss.blueforge.org/bing/binglish.exe" 
 IMAGE_URL = f"https://ss.blueforge.org/bing?v={VERSION}"  
@@ -228,7 +228,7 @@ def show_game_overlay():
 
     game_data = {}
     try:
-        res = requests.get(GAME_DATA_URL, timeout=5)
+        res = requests.get(GAME_DATA_URL, timeout=15)
         if res.status_code == 200: game_data = res.json()
     except: pass
 
@@ -430,7 +430,7 @@ def show_game_overlay():
                     valid_def = ""
                     try:
                         verify_url = f"https://ss.blueforge.org/valid?q={g_str}"
-                        v_res = requests.get(verify_url, timeout=3)
+                        v_res = requests.get(verify_url, timeout=10)
                         if v_res.status_code == 200:
                             valid_def = v_res.text.strip()
                             if not valid_def:
@@ -498,7 +498,7 @@ def show_game_overlay():
             # 获取数据
             cw_data = None
             try:
-                res = requests.get("https://ss.blueforge.org/dailyCrossword", timeout=5)
+                res = requests.get("https://ss.blueforge.org/dailyCrossword", timeout=10)
                 if res.status_code == 200: cw_data = res.json().get("data")
             except Exception: pass
             if not cw_data:
@@ -801,6 +801,138 @@ def show_game_overlay():
                      font=("Microsoft YaHei", 11, "italic"), 
                      fg="#7F8C8D", 
                      bg=OVERLAY_COLOR).pack()
+        elif game_type == "vocab":
+            # 居中显示游戏容器
+            game_container.place(relx=0.5, rely=0.50, anchor="center")
+
+            # --- 1. 顶部标题与操作栏 ---
+            header_f = tk.Frame(game_container, bg=OVERLAY_COLOR)
+            header_f.pack(fill="x", pady=(0, 10))
+
+            tk.Label(header_f, text="Test Your Vocabulary", font=("Helvetica", 36, "bold"), fg="#F1C40F", bg=OVERLAY_COLOR).pack(pady=(0, 5))
+            tk.Label(header_f, text="请如实勾选您“确定认识”的单词。注意：内含不存在的钓鱼假词，错选将面临严厉扣分！", font=("Microsoft YaHei", 14), fg="#E74C3C", bg=OVERLAY_COLOR).pack(pady=(0, 15))
+
+            action_f = tk.Frame(header_f, bg=OVERLAY_COLOR)
+            action_f.pack()
+
+            # --- 2. 词汇网格容器 ---
+            grid_f = tk.Frame(game_container, bg=OVERLAY_COLOR)
+            grid_f.pack(pady=10)
+
+            # 加载提示
+            loading_lbl = tk.Label(grid_f, text="正在从服务器获取测试词库，请稍候...", font=("Microsoft YaHei", 16), fg="#BDC3C7", bg=OVERLAY_COLOR)
+            loading_lbl.pack(pady=50)
+
+            selected_vars = {}
+            test_words_data = []
+
+            # --- 3. 计分与提交逻辑 ---
+            def submit_vocab():
+                nonlocal game_active
+                if not game_active: return
+
+                score = 0
+                trap_count = 0
+                
+                # 动态统计分母：防止后端返回的数据不一定是标准的每区间8个词
+                bucket_counts = {i: 0 for i in range(10)}
+                bucket_totals = {i: 0 for i in range(10)}
+
+                for w_info in test_words_data:
+                    if not w_info["is_trap"]:
+                        idx = (w_info["rank"] - 1) // 1000
+                        if 0 <= idx <= 9:
+                            bucket_totals[idx] += 1
+
+                for word, (var, w_info) in selected_vars.items():
+                    if var.get():
+                        if w_info["is_trap"]:
+                            trap_count += 1
+                        else:
+                            idx = (w_info["rank"] - 1) // 1000
+                            if 0 <= idx <= 9:
+                                bucket_counts[idx] += 1
+
+                # 计算区间分数
+                for i in range(10):
+                    if bucket_totals[i] > 0:
+                        score += (bucket_counts[i] / float(bucket_totals[i])) * 1000
+
+                # 惩罚机制
+                score -= trap_count * 1500
+                score = max(0, int(score))
+
+                # 提交后锁定所有多选框，并对钓鱼词进行“惩罚”
+                for child in grid_f.winfo_children():
+                    if isinstance(child, tk.Checkbutton):
+                        word_text = child.cget("text")
+                        
+                        # 判断是否是用户选错了的陷阱词
+                        is_selected_trap = selected_vars[word_text][1]["is_trap"] and selected_vars[word_text][0].get()
+                        
+                        if is_selected_trap:
+                            # 踩中陷阱：底色瞬间变红！
+                            child.config(state="disabled", selectcolor="#E74C3C", disabledforeground="white")
+                        else:
+                            # 正常锁定：保持原有颜色，仅降低透明度观感 (灰色字)
+                            child.config(state="disabled", disabledforeground="#BDC3C7")
+
+                # 评级系统
+                if score >= 8500: rank_title = "Godlike!"
+                elif score >= 6000: rank_title = "Walking Dictionary!"
+                elif score >= 4000: rank_title = "Excellent!"
+                elif score >= 2000: rank_title = "Good Start!"
+                else: rank_title = "Keep Trying!"
+                
+                color = "#2ECC71" if trap_count == 0 else "#E67E22"
+                trap_msg = f" (触发了 {trap_count} 个假词惩罚，已被标红！)" if trap_count > 0 else " (火眼金睛，完美避开所有假词！)"
+
+                result_msg.config(text=f"你的词汇量约为: {score} 词\n✨ {rank_title} ✨\n{trap_msg}", fg=color)
+                play_game_sound("submit")
+                game_active = False
+
+            # --- 4. 操作按钮渲染 ---
+            submit_btn = tk.Button(action_f, text="✔ 选好了，提交", font=("Microsoft YaHei", 14, "bold"), command=submit_vocab, bg="#2ECC71", fg="white", relief="flat", padx=20, pady=5, cursor="hand2")
+            tk.Button(action_f, text="退出测试 (Esc)", font=("Microsoft YaHei", 14), command=on_close_game, bg="#E74C3C", fg="white", relief="flat", padx=20, pady=5, cursor="hand2").pack(side="right", padx=10)
+
+            # --- 5. 词库渲染逻辑 (现代化词块UI) ---
+            def render_vocab_grid(words):
+                nonlocal test_words_data
+                test_words_data = words
+                loading_lbl.pack_forget()
+
+                submit_btn.pack(side="left", padx=10)
+
+                cols = 8
+                for i, w_info in enumerate(words):
+                    word = w_info["word"]
+                    var = tk.BooleanVar(value=False)
+                    selected_vars[word] = (var, w_info)
+
+                    cb = tk.Checkbutton(grid_f, text=word, variable=var, font=("Helvetica", 13, "bold"),
+                                        indicatoron=False,
+                                        bg="#34495E",
+                                        fg="white",
+                                        selectcolor="#27AE60",
+                                        activebackground="#1ABC9C",
+                                        activeforeground="white",
+                                        relief="flat", borderwidth=0,
+                                        cursor="hand2", width=12, pady=6)
+                    cb.grid(row=i // cols, column=i % cols, padx=6, pady=6)
+
+            # --- 6. 异步发起网络请求 ---
+            def load_vocab():
+                try:
+                    res = requests.get("https://ss.blueforge.org/getVocabTest", timeout=10)
+                    if res.status_code == 200:
+                        words = res.json().get("test_words", [])
+                        overlay.after(0, render_vocab_grid, words)
+                    else:
+                        overlay.after(0, lambda: loading_lbl.config(text="获取数据失败，请检查网络", fg="#E74C3C"))
+                except Exception:
+                    overlay.after(0, lambda: loading_lbl.config(text="无法连接到服务器", fg="#E74C3C"))
+
+            threading.Thread(target=load_vocab, daemon=True).start()
 
     btn_style = {"font": ("Microsoft YaHei", 14, "bold"), "width": 20, "height": 2, "relief": "flat", "cursor": "hand2"}
     
@@ -812,6 +944,9 @@ def show_game_overlay():
 
     crossword_btn = tk.Button(btn_frame, text="Mini Crossword", bg="#9B59B6", fg="white", **btn_style, command=lambda: start_game("crossword"))
     crossword_btn.pack(side="left", padx=10)
+
+    vocab_btn = tk.Button(btn_frame, text="Test Your Vocabulary", bg="#E67E22", fg="white", **btn_style, command=lambda: start_game("vocab"))
+    vocab_btn.pack(side="left", padx=10)
 
     return_btn = tk.Button(lobby_frame, text=" 返回桌面 ", font=("Microsoft YaHei", 13, "bold"), 
                            fg="white", bg="#34495E", relief="flat", padx=40, pady=10, 
@@ -1084,7 +1219,7 @@ def show_rest_overlay():
         fact_en = ""
         fact_cn = ""
         try:
-            res = requests.get(USELESS_FACT_URL, timeout=3)
+            res = requests.get(USELESS_FACT_URL, timeout=10)
             if res.status_code == 200:
                 data = res.json()
                 fact_en = data.get("en", "")
@@ -1647,7 +1782,7 @@ def build_menu_items():
         menu_items.append(item(f'听单词 {bing_word}', lambda: threading.Thread(target=play_word_sound, daemon=True).start()))
         
     if bing_word:
-        menu_items.append(item(f'看单词 {bing_word}', lambda: webbrowser.open(f"https://www.playphrase.me/#/search?q={bing_word}&language=en")))
+        menu_items.append(item(f'看单词 {bing_word}', lambda: webbrowser.open(f"https://www.playphrase.me/#/reels/en?source=custom-search&q={bing_word}&translate-direction=zh-cn&ct=phrases")))
     
     if bing_url or bing_mp3:
         menu_items.append(Menu.SEPARATOR)
