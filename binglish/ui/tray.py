@@ -8,17 +8,18 @@ import threading
 import webbrowser
 from functools import partial
 
-from pystray import Menu, MenuItem as item
+from pystray import Menu
+from pystray import MenuItem as item
 
 from binglish.core import config as config_mod
-from binglish.core.constants import PLAYPHRASE_URL, PROJECT_URL
+from binglish.core.constants import PLAYPHRASE_URL
 from binglish.core.paths import config_path, wallpaper_path
 from binglish.core.state import state
 from binglish.platform import get_platform
 from binglish.services import music as music_svc
 from binglish.services import wallpaper as wallpaper_svc
 from binglish.ui import dialogs
-from binglish.ui.overlays import open_history_from_menu, open_rest_overlay
+from binglish.ui.overlays import open_history_from_menu
 
 log = logging.getLogger(__name__)
 
@@ -53,10 +54,13 @@ def _play_word() -> None:
 
             playsound(state.audio_url)
         except Exception as e:
-            log.error("word audio failed: %s", e)
+            err = e
+            log.error("word audio failed: %s", err)
             if state.root:
+                # Capture err in default arg — `e` is unbound after except exits
                 state.root.after(
-                    0, lambda: dialogs.show_error("播放失败", str(e))
+                    0,
+                    lambda msg=str(err): dialogs.show_error("播放失败", msg),
                 )
 
     threading.Thread(target=worker, daemon=True).start()

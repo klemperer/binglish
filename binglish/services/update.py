@@ -4,11 +4,9 @@ from __future__ import annotations
 
 import hashlib
 import logging
-import os
-import re
 import subprocess
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Callable, Optional
 
 from binglish.core.constants import (
     APP_NAME,
@@ -25,7 +23,7 @@ from binglish.services import http
 log = logging.getLogger(__name__)
 
 
-def file_sha256(path: str | Path) -> Optional[str]:
+def file_sha256(path: str | Path) -> str | None:
     h = hashlib.sha256()
     try:
         with open(path, "rb") as f:
@@ -146,10 +144,10 @@ def internet_ok() -> bool:
 
 
 def download_update(
-    expected_hash: Optional[str],
+    expected_hash: str | None,
     dest_dir: Path,
-    on_error: Optional[Callable[[str], None]] = None,
-) -> Optional[Path]:
+    on_error: Callable[[str], None] | None = None,
+) -> Path | None:
     """Download new exe and verify hash. Returns path or None."""
     dest = dest_dir / "bing_new.exe"
     log.info("downloading update from %s", DOWNLOAD_URL)

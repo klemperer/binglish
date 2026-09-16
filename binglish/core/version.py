@@ -13,7 +13,7 @@ class SemVer:
     pre: str = ""
 
     @classmethod
-    def parse(cls, raw: str) -> "SemVer":
+    def parse(cls, raw: str) -> SemVer:
         s = (raw or "").strip()
         if s.lower().startswith("v"):
             s = s[1:]

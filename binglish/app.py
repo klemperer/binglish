@@ -24,7 +24,7 @@ from binglish.platform import get_platform
 from binglish.services import music as music_svc
 from binglish.services import update as update_svc
 from binglish.services import wallpaper as wallpaper_svc
-from binglish.ui import dialogs, tray
+from binglish.ui import tray
 
 log = logging.getLogger(__name__)
 

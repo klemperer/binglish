@@ -6,9 +6,7 @@ import logging
 import random
 import re
 import threading
-import time
 import tkinter as tk
-from typing import Optional
 
 from binglish.core.constants import COLOR_BG, COLOR_GOLD, COLOR_MUTED
 from binglish.games import crossword_logic as cl
@@ -198,8 +196,8 @@ def launch(
         display_queue: list[dict] = []
         display_timer = [None]
         active_direction = ["Across"]
-        current_cell: list[Optional[cl.Coord]] = [None]
-        current_word: list[Optional[dict]] = [None]
+        current_cell: list[cl.Coord | None] = [None]
+        current_word: list[dict | None] = [None]
 
         xs = [x for x, _ in valid_cells] or [0]
         ys = [y for _, y in valid_cells] or [0]
@@ -251,11 +249,11 @@ def launch(
                     pass
             refresh_clue_styles()
 
-        def set_current_word(word: Optional[dict]) -> None:
+        def set_current_word(word: dict | None) -> None:
             current_word[0] = word
             refresh_highlights()
 
-        def focus_coord(coord: cl.Coord, direction: Optional[str] = None) -> None:
+        def focus_coord(coord: cl.Coord, direction: str | None = None) -> None:
             if coord not in entry_widgets:
                 return
             if direction:

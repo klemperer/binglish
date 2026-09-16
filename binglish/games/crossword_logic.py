@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Callable, Iterable, Optional, Sequence
+from collections.abc import Callable, Sequence
 
 Coord = tuple[int, int]
 Dir = str  # "Across" | "Down"
@@ -53,7 +53,7 @@ def step_in_word(
     cells: Sequence[Coord],
     current: Coord,
     delta: int,
-) -> Optional[Coord]:
+) -> Coord | None:
     """Move within the word by delta cells with wrap. None if current not in word."""
     try:
         idx = list(cells).index(current)
@@ -66,7 +66,7 @@ def word_at(
     words: Sequence[dict],
     coord: Coord,
     direction: Dir,
-) -> Optional[dict]:
+) -> dict | None:
     for w in words:
         if w.get("dir") != direction:
             continue
@@ -83,10 +83,10 @@ def word_is_filled_correct(word: dict, get_char: Callable[[Coord], str]) -> bool
 
 def next_incomplete_word(
     words: Sequence[dict],
-    current: Optional[dict],
+    current: dict | None,
     get_char: Callable[[Coord], str],
     step: int = 1,
-) -> Optional[dict]:
+) -> dict | None:
     """
     Next/previous word that is not fully correct.
     Order: Across then Down, by number. Wraps around.
@@ -113,7 +113,6 @@ def next_incomplete_word(
             full_pos = full_ids.index(word_id(current))
         except ValueError:
             return incomplete[0] if step >= 0 else incomplete[-1]
-        n = len(incomplete)
         for k in range(len(seq)):
             j = (full_pos + (k + 1) * (1 if step >= 0 else -1)) % len(seq)
             cand = seq[j]

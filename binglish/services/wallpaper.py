@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from typing import Optional
 
 import exifread
 
@@ -18,15 +17,15 @@ log = logging.getLogger(__name__)
 
 @dataclass
 class WallpaperMeta:
-    word: Optional[str] = None
-    dictionary_url: Optional[str] = None
-    audio_url: Optional[str] = None
-    copyright: Optional[str] = None
-    copyright_url: Optional[str] = None
-    image_id: Optional[str] = None
+    word: str | None = None
+    dictionary_url: str | None = None
+    audio_url: str | None = None
+    copyright: str | None = None
+    copyright_url: str | None = None
+    image_id: str | None = None
 
 
-def _parse_copyright(raw: str) -> tuple[Optional[str], Optional[str]]:
+def _parse_copyright(raw: str) -> tuple[str | None, str | None]:
     if not raw:
         return None, None
     if "||" in raw:

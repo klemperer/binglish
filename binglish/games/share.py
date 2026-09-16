@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from typing import Iterable, Optional, Sequence
+from collections.abc import Iterable, Sequence
 
 log = logging.getLogger(__name__)
 
@@ -46,10 +46,10 @@ def crossword_grid_rows(
     valid_cells: dict[tuple[int, int], str],
     hinted_cells: Iterable[tuple[int, int]],
     *,
-    min_x: Optional[int] = None,
-    max_x: Optional[int] = None,
-    min_y: Optional[int] = None,
-    max_y: Optional[int] = None,
+    min_x: int | None = None,
+    max_x: int | None = None,
+    min_y: int | None = None,
+    max_y: int | None = None,
 ) -> list[str]:
     """
     Emoji grid for crossword: 🟩 self-solved, 🟪 hinted, ⬛ empty.

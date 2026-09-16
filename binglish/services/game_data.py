@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-from typing import Any, Optional
 
 from binglish.core.constants import (
     CROSSWORD_URL,
@@ -26,7 +25,7 @@ def fetch_game_catalog() -> dict:
     return data if isinstance(data, dict) else {}
 
 
-def validate_wordle_guess(word: str) -> Optional[str]:
+def validate_wordle_guess(word: str) -> str | None:
     """Return definition text, empty string if invalid, None on network error."""
     url = f"{WORDLE_VALIDATE_URL}?q={word}"
     try:
@@ -37,7 +36,7 @@ def validate_wordle_guess(word: str) -> Optional[str]:
         return None
 
 
-def fetch_crossword() -> Optional[dict]:
+def fetch_crossword() -> dict | None:
     try:
         payload = http.get_json(CROSSWORD_URL, timeout=10)
     except http.HttpError as e:
@@ -68,7 +67,7 @@ def wordle_colors(guess: str, target: str) -> list[str]:
     g = guess.lower()
     t = target.lower()
     n = len(t)
-    colors: list[Optional[str]] = [None] * n
+    colors: list[str | None] = [None] * n
     remaining = list(t)
 
     for i in range(n):

@@ -37,5 +37,28 @@ include = ["binglish*"]
 line-length = 100
 target-version = "py310"
 
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "S"]
+ignore = [
+  "BLE001",  # broad Exception at OS/network/UI boundaries is intentional
+  "S101",    # assert in tests
+  "S110",    # try-except-pass on DPI/beep/window teardown
+  "S112",
+  "S311",    # random.choice for quotes/hints, not crypto
+  "S603",    # fixed argv subprocess (osascript/cmd/open)
+  "S606",    # os.startfile
+  "S607",    # partial executable path on PATH (clip, ioreg, afplay)
+  "SIM102",
+  "SIM103",
+  "SIM105",  # contextlib.suppress optional style
+  "B905",    # zip strict on py3.10 optional
+  "DTZ005",  # local wall-clock for history / filenames
+  "E501",    # long bilingual quote strings
+  "E731",    # lambda assignment in tests
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["S"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]

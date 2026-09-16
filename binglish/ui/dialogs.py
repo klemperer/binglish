@@ -10,8 +10,6 @@ import qrcode
 from PIL import ImageTk
 
 from binglish.core.constants import (
-    COLOR_BG,
-    COLOR_MUTED,
     PROJECT_URL,
     SHARE_URL_TEMPLATE,
     VERSION,

@@ -5,7 +5,7 @@ from __future__ import annotations
 import threading
 import time
 from dataclasses import dataclass, field
-from typing import Any, Optional
+from typing import Any
 
 
 @dataclass
@@ -15,17 +15,17 @@ class AppState:
     lock: threading.RLock = field(default_factory=threading.RLock, repr=False)
 
     # Word / wallpaper metadata (from EXIF or sidecar)
-    word: Optional[str] = None
-    dictionary_url: Optional[str] = None
-    audio_url: Optional[str] = None
-    copyright: Optional[str] = None
-    copyright_url: Optional[str] = None
-    image_id: Optional[str] = None
+    word: str | None = None
+    dictionary_url: str | None = None
+    audio_url: str | None = None
+    copyright: str | None = None
+    copyright_url: str | None = None
+    image_id: str | None = None
 
     # Song of the day
-    music_name: Optional[str] = None
-    music_url: Optional[str] = None
-    music_desc: Optional[str] = None
+    music_name: str | None = None
+    music_url: str | None = None
+    music_desc: str | None = None
     is_music_playing: bool = False
     music_process: Any = None
     music_check_timer: Any = None
@@ -70,12 +70,12 @@ class AppState:
     def set_word_fields(
         self,
         *,
-        word: Optional[str] = None,
-        dictionary_url: Optional[str] = None,
-        audio_url: Optional[str] = None,
-        copyright: Optional[str] = None,
-        copyright_url: Optional[str] = None,
-        image_id: Optional[str] = None,
+        word: str | None = None,
+        dictionary_url: str | None = None,
+        audio_url: str | None = None,
+        copyright: str | None = None,
+        copyright_url: str | None = None,
+        image_id: str | None = None,
     ) -> None:
         with self.lock:
             self.word = word
@@ -93,9 +93,9 @@ class AppState:
 
     def set_music_fields(
         self,
-        name: Optional[str],
-        url: Optional[str],
-        description: Optional[str],
+        name: str | None,
+        url: str | None,
+        description: str | None,
     ) -> None:
         with self.lock:
             if name and url:

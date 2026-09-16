@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 import multiprocessing
-from typing import Any, Optional
+from typing import Any
 
 from binglish.core.constants import MUSIC_JSON_URL
 from binglish.core.state import state
@@ -44,7 +44,7 @@ def _play_task(url: str) -> None:
         log.error("music playback error: %s", e)
 
 
-def start_playback() -> Optional[Any]:
+def start_playback() -> Any | None:
     """Spawn a process to play the current song. Returns process or None."""
     if not state.music_url:
         return None

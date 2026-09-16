@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime
-from typing import Any, Optional
 
 from binglish.core.constants import HISTORY_URL_BASE, USELESS_FACT_URL
 from binglish.services import http
