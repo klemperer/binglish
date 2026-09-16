@@ -1,4 +1,5 @@
 from binglish.games.share import (
+    crossword_grid_rows,
     crossword_share_text,
     format_mmss,
     wordle_share_text,
@@ -7,7 +8,7 @@ from binglish.games.share import (
 
 def test_wordle_share_win():
     text = wordle_share_text(
-        ["crane", "binglish"[0:5]],  # noqa: just two guesses
+        ["crane", "bingl"],
         [
             ["gray", "yellow", "gray", "gray", "green"],
             ["green", "green", "green", "green", "green"],
@@ -30,7 +31,38 @@ def test_wordle_share_lose():
     assert text.splitlines()[1] == "⬛⬛⬛⬛⬛"
 
 
-def test_crossword_share():
+def test_crossword_grid_self_vs_hint():
+    # 3x2 grid with one empty black cell and one hinted
+    valid = {
+        (0, 0): "A",
+        (1, 0): "B",
+        (2, 0): "C",
+        (0, 1): "D",
+        (1, 1): "E",
+        # (2,1) missing → black
+    }
+    rows = crossword_grid_rows(valid, hinted_cells={(1, 0)})
+    assert rows == ["🟩🟪🟩", "🟩🟩⬛"]
+
+
+def test_crossword_share_with_grid():
+    grid = ["🟩🟪🟩", "🟩🟩⬛"]
+    text = crossword_share_text(
+        time_label="01:23",
+        hints=1,
+        rank_text="Excellent!",
+        grid_rows=grid,
+    )
+    lines = text.splitlines()
+    assert lines[0] == "Binglish Crossword ✅"
+    assert lines[1] == "🟩🟪🟩"
+    assert lines[2] == "🟩🟩⬛"
+    assert "01:23" in lines[3]
+    assert "提示 1 次" in lines[3]
+    assert "🟩自己填出" in lines[4]
+
+
+def test_crossword_share_without_grid():
     text = crossword_share_text(
         time_label=format_mmss(83),
         hints=0,
@@ -40,15 +72,7 @@ def test_crossword_share():
     assert "01:23" in text
     assert "无提示" in text
     assert "Genius!" in text
-
-
-def test_crossword_share_with_hints():
-    text = crossword_share_text(
-        time_label="00:45",
-        hints=2,
-        rank_text="Excellent!",
-    )
-    assert "提示 2 次" in text
+    assert "🟩" not in text.splitlines()[0]
 
 
 def test_format_mmss():
@@ -56,3 +80,4 @@ def test_format_mmss():
     assert format_mmss(59) == "00:59"
     assert format_mmss(65) == "01:05"
     assert format_mmss(-5) == "00:00"
+

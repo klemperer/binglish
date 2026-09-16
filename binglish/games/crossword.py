@@ -12,7 +12,11 @@ from typing import Optional
 
 from binglish.core.constants import COLOR_BG, COLOR_GOLD, COLOR_MUTED
 from binglish.games import crossword_logic as cl
-from binglish.games.share import copy_text, crossword_share_text
+from binglish.games.share import (
+    copy_text,
+    crossword_grid_rows,
+    crossword_share_text,
+)
 from binglish.games.sounds import play_game_sound
 from binglish.services import game_data as gd
 
@@ -347,10 +351,19 @@ def launch(
                 return
 
             def do_copy() -> None:
+                grid = crossword_grid_rows(
+                    valid_cells,
+                    hinted_cells,
+                    min_x=min_x,
+                    max_x=max_x,
+                    min_y=min_y,
+                    max_y=max_y,
+                )
                 text = crossword_share_text(
                     time_label=_current_time_label(),
                     hints=hint_count,
                     rank_text=rank_text,
+                    grid_rows=grid,
                 )
                 if copy_text(parent, text):
                     share_state["btn"].config(text="已复制，可粘贴分享 ✓")
