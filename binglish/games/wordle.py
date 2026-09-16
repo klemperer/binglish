@@ -7,6 +7,7 @@ import threading
 import tkinter as tk
 
 from binglish.core.constants import COLOR_BG, COLOR_GOLD, COLOR_MUTED
+from binglish.games.share import copy_text, wordle_share_text
 from binglish.games.sounds import play_game_sound
 from binglish.services import game_data as gd
 
@@ -35,10 +36,12 @@ def launch(parent: tk.Misc, game_data: dict, on_exit) -> None:
 
     t_len = len(target)
     guesses: list[str] = []
+    color_rows: list[list[str]] = []
     cur_guess: list[str] = []
     game_active = True
     # Serialize submit: prevent double-Enter and edits while verifying
     submitting = False
+    share_btn = {"widget": None}
 
     rule_f = tk.Frame(parent, bg=COLOR_BG, width=320)
     rule_f.place(relx=0.05, rely=0.5, anchor="w")
@@ -128,6 +131,32 @@ def launch(parent: tk.Misc, game_data: dict, on_exit) -> None:
         for i in range(t_len):
             cells[len(guesses)][i].config(text=cur_guess[i] if i < len(cur_guess) else "")
 
+    def _show_share_button(won: bool) -> None:
+        if share_btn["widget"] is not None:
+            return
+
+        def do_copy() -> None:
+            text = wordle_share_text(guesses, color_rows, won=won)
+            if copy_text(parent, text):
+                share_btn["widget"].config(text="已复制，可粘贴分享 ✓")
+            else:
+                share_btn["widget"].config(text="复制失败")
+
+        btn = tk.Button(
+            parent,
+            text="复制成绩",
+            font=("Microsoft YaHei", 12, "bold"),
+            command=do_copy,
+            bg="#3498DB",
+            fg="white",
+            relief="flat",
+            padx=20,
+            pady=8,
+            cursor="hand2",
+        )
+        btn.place(relx=0.5, rely=0.22, anchor="center")
+        share_btn["widget"] = btn
+
     def submit() -> None:
         nonlocal game_active, cur_guess, submitting
         if not game_active or submitting or len(cur_guess) < t_len:
@@ -185,6 +214,7 @@ def launch(parent: tk.Misc, game_data: dict, on_exit) -> None:
                 if row >= 6:
                     return
                 colors = gd.wordle_colors(g_str, target)
+                color_rows.append(list(colors))
                 for i, col_name in enumerate(colors):
                     col = _COLOR_MAP[col_name]
                     cells[row][i].config(bg=col, highlightbackground=col)
@@ -205,6 +235,7 @@ def launch(parent: tk.Misc, game_data: dict, on_exit) -> None:
                     result_msg.config(text="✨ Success! ✨", fg="#2ECC71")
                     rank_lbl.config(text=ranks[row])
                     rank_lbl.place(relx=0.5, rely=0.16, anchor="center")
+                    _show_share_button(won=True)
                 elif len(guesses) >= 6:
                     game_active = False
                     result_msg.config(text=f"Hard Luck! ({target.upper()})", fg="#E74C3C")
@@ -216,6 +247,7 @@ def launch(parent: tk.Misc, game_data: dict, on_exit) -> None:
                         bg=COLOR_BG,
                         wraplength=600,
                     ).pack(pady=20)
+                    _show_share_button(won=False)
 
             parent.after(0, apply_result)
 

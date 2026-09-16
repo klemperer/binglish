@@ -12,6 +12,7 @@ from typing import Optional
 
 from binglish.core.constants import COLOR_BG, COLOR_GOLD, COLOR_MUTED
 from binglish.games import crossword_logic as cl
+from binglish.games.share import copy_text, crossword_share_text
 from binglish.games.sounds import play_game_sound
 from binglish.services import game_data as gd
 
@@ -330,6 +331,46 @@ def launch(
                     disabledbackground="#D5F5E3",
                     disabledforeground=final_fg,
                 )
+            _show_crossword_share(rank_text)
+
+        share_state = {"btn": None}
+
+        def _current_time_label() -> str:
+            if timer_var is not None:
+                m = re.search(r"(\d+):(\d+)", timer_var.get() or "")
+                if m:
+                    return f"{m.group(1)}:{m.group(2)}"
+            return "00:00"
+
+        def _show_crossword_share(rank_text: str) -> None:
+            if share_state["btn"] is not None:
+                return
+
+            def do_copy() -> None:
+                text = crossword_share_text(
+                    time_label=_current_time_label(),
+                    hints=hint_count,
+                    rank_text=rank_text,
+                )
+                if copy_text(parent, text):
+                    share_state["btn"].config(text="已复制，可粘贴分享 ✓")
+                else:
+                    share_state["btn"].config(text="复制失败")
+
+            btn = tk.Button(
+                parent,
+                text="复制成绩",
+                font=("Microsoft YaHei", 12, "bold"),
+                command=do_copy,
+                bg="#3498DB",
+                fg="white",
+                relief="flat",
+                padx=20,
+                pady=8,
+                cursor="hand2",
+            )
+            btn.place(relx=0.5, rely=0.18, anchor="center")
+            share_state["btn"] = btn
 
         def give_hint() -> None:
             nonlocal hint_count
