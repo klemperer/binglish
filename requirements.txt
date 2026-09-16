@@ -1,6 +1,6 @@
-requests
-pystray
-Pillow
-playsound3
-exifread
-qrcode
+requests>=2.31
+pystray>=0.19
+Pillow>=10.0
+playsound3>=2.0
+ExifRead>=3.0
+qrcode>=7.4

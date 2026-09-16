@@ -1,0 +1,149 @@
+# 权威构建与发布：打 tag 后产出 GitHub Release + 校验文件。
+# 客户端仍可走自有 CDN 自更新；不放心的用户可对照本 Release 手动安装。
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag (e.g. v2.0.0)"
+        required: false
+
+permissions:
+  contents: write
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install build deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt pyinstaller
+
+      - name: Run tests
+        run: |
+          pip install pytest
+          $env:PYTHONPATH = $env:GITHUB_WORKSPACE
+          pytest -q
+
+      - name: Build with PyInstaller
+        run: |
+          pyinstaller --noconfirm --onefile --windowed `
+            --name binglish `
+            --icon assets/binglish.ico `
+            --add-data "assets/binglish.ico;." `
+            --paths . `
+            --hidden-import "pystray._win32" `
+            binglish/app.py
+
+      - name: Generate checksums
+        run: |
+          $exe = "dist/binglish.exe"
+          $hash = (Get-FileHash $exe -Algorithm SHA256).Hash.ToLower()
+          Set-Content -Path "dist/checksums.txt" -Value "$hash  binglish.exe"
+          Write-Host "SHA256: $hash"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-build
+          path: |
+            dist/binglish.exe
+            dist/checksums.txt
+
+  build-macos:
+    runs-on: macos-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install build deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt pyinstaller
+          # tkmacosx optional; mac GUI may need it at runtime
+          pip install tkmacosx || true
+
+      - name: Build app bundle
+        run: |
+          pyinstaller --onefile --windowed \
+            --icon assets/binglish.ico \
+            --add-data "assets/binglish.ico:." \
+            --name binglish \
+            binglish/app.py
+
+      - name: Checksum
+        run: |
+          shasum -a 256 dist/binglish | awk '{print $1"  binglish"}' > dist/checksums-macos.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos-build
+          path: |
+            dist/binglish
+            dist/checksums-macos.txt
+          if-no-files-found: warn
+
+  publish:
+    needs: [build-windows]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Collect optional mac artifact
+        continue-on-error: true
+        uses: actions/download-artifact@v4
+        with:
+          name: macos-build
+          path: artifacts-mac
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: ${{ github.ref_name }}
+          generate_release_notes: true
+          files: |
+            artifacts/binglish.exe
+            artifacts/checksums.txt
+            artifacts-mac/binglish
+            artifacts-mac/checksums-macos.txt
+          body: |
+            ## 下载
+
+            | 文件 | 说明 |
+            |---|---|
+            | `binglish.exe` | Windows 便携版 |
+            | `checksums.txt` | SHA256 |
+            | `binglish` | macOS 构建（未公证，可能需右键打开） |
+
+            ## 校验（Windows）
+
+            ```powershell
+            Get-FileHash .\binglish.exe -Algorithm SHA256
+            ```
+
+            与 `checksums.txt` 一致后再运行。
+
+            ## 双轨更新
+
+            - **托盘菜单 → 检查更新**：走作者 CDN 快速通道
+            - **本页手动下载**：权威构建产物，可自行校验哈希
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

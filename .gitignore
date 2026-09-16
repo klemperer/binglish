@@ -1,5 +1,32 @@
-build
-dist
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+*.egg
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.venv/
+venv/
+env/
 
-*.jpg
+# PyInstaller
+build/
+dist/
 *.spec
+
+# App runtime (created next to exe / cwd)
+binglish.ini
+wallpaper.jpg
+binglish_debug.log
+binglish_wallpaper_*.jpg
+updater.bat
+bing_new.exe
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
