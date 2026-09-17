@@ -108,6 +108,23 @@ PyInstaller打包的EXE文件常被杀毒软件误报为病毒或流氓软件（
 
 #### 程序不能正常运行（黑框闪退）
 尝试将程序移动至非中文路径的目录下再双击运行。
+
+#### 打包时报 `PermissionError: [WinError 5] 拒绝访问`
+PyInstaller 分析依赖时会再启动一个隔离 Python 子进程；若工程路径含**中文或过长**，部分环境会 `CreateProcess` 失败。  
+处理：把仓库拷到纯英文短路径再打包，例如：
+
+```bat
+robocopy "%cd%" C:\binglish-build /E /XD .git .venv dist build
+cd /d C:\binglish-build
+py -3 -m venv .venv
+.venv\Scripts\activate
+pip install -r requirements.txt pyinstaller
+python -m PyInstaller --noconfirm --onefile --windowed --name binglish ^
+  --icon assets\binglish.ico --add-data "assets\binglish.ico;." --paths . ^
+  --hidden-import pystray._win32 binglish\app.py
+```
+
+若仍失败，可将该目录加入杀软排除后重试。
 ## Star History
 
 <a href="https://www.star-history.com/?repos=klemperer%2Fbinglish&type=date&legend=top-left">
