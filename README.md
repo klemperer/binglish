@@ -13,6 +13,28 @@
 
 <img width="1920" height="1080" alt="1" src="https://github.com/user-attachments/assets/92f5d84a-cc09-4581-9b17-9e113f27d2bc" />
 
+## 快速开始
+
+最短路径：直接用编译好的程序，无需装 Python。
+
+### Windows 用户
+
+1. 打开 [GitHub Releases](https://github.com/klemperer/binglish/releases/latest)，下载 `binglish.exe`
+2. 双击运行（可拷到任意英文路径目录）
+3. 程序在任务栏托盘；右键菜单可设「开机运行」
+
+也可使用备用地址：[ss.blueforge.org/bing/binglish.exe](https://ss.blueforge.org/bing/binglish.exe)
+
+### macOS 用户
+
+1. 打开 [GitHub Releases](https://github.com/klemperer/binglish/releases/latest)，下载 `binglish-macos.zip` 并解压
+2. 将 `binglish.app` 拖入「应用程序」
+3. 首次打开若提示无法验证：右键 →「打开」，或执行  
+   `xattr -dr com.apple.quarantine /Applications/binglish.app`
+4. 图标在菜单栏托盘；右键菜单可设开机运行
+
+> 安装后约每 3 小时自动更换 Bing 壁纸并展示单词。更多打包、源码运行与菜单说明见下文。
+
 ## 下载已编译程序（Windows）
 
 [Github Releases（推荐，含校验文件）](https://github.com/klemperer/binglish/releases/latest) 或者 [备用下载地址](https://ss.blueforge.org/bing/binglish.exe)
