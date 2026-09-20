@@ -1,5 +1,6 @@
 # 权威构建与发布：打 tag 后产出 GitHub Release + 校验文件。
 # 客户端仍可走自有 CDN 自更新；不放心的用户可对照本 Release 手动安装。
+# macOS 打包参数与仓库内 build_macos.sh 对齐（托盘子进程 + PyObjC + onedir .app）。
 name: Release
 
 on:
@@ -73,27 +74,66 @@ jobs:
       - name: Install build deps
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt pyinstaller
-          # tkmacosx optional; mac GUI may need it at runtime
+          pip install -r requirements.txt pyinstaller pytest
+          # Tray child process (binglish.ui.tray_proc) uses AppKit via pystray
+          pip install pyobjc-core pyobjc-framework-Cocoa || true
           pip install tkmacosx || true
 
-      - name: Build app bundle
+      - name: Run tests
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+        run: python -m pytest -q tests
+
+      - name: Build onedir app bundle
         run: |
-          pyinstaller --onefile --windowed \
-            --icon assets/binglish.ico \
-            --add-data "assets/binglish.ico:." \
+          if [[ -f assets/binglish.icns ]]; then
+            ICON_ARGS=(--icon assets/binglish.icns)
+          else
+            ICON_ARGS=(--icon assets/binglish.ico)
+          fi
+          # Keep in sync with build_macos.sh HIDDEN list
+          pyinstaller --noconfirm --windowed \
             --name binglish \
+            "${ICON_ARGS[@]}" \
+            --add-data "assets/binglish.ico:." \
+            --paths . \
+            --hidden-import binglish.ui.tray_proc \
+            --hidden-import binglish.ui.theme \
+            --hidden-import binglish.ui.ui_queue \
+            --hidden-import pystray._darwin \
+            --hidden-import objc \
+            --hidden-import Foundation \
+            --hidden-import AppKit \
+            --hidden-import PyObjCTools.MachSignals \
+            --collect-binaries pystray \
             binglish/app.py
 
-      - name: Checksum
+      - name: Package and checksum
         run: |
-          shasum -a 256 dist/binglish | awk '{print $1"  binglish"}' > dist/checksums-macos.txt
+          if [[ -d dist/binglish.app ]]; then
+            APP_PATH="dist/binglish.app"
+          else
+            APP_PATH="dist/binglish"
+          fi
+          echo "APP_PATH=$APP_PATH"
+          ditto -c -k --sequesterRsrc --keepParent "$APP_PATH" dist/binglish-macos.zip
+          : > dist/checksums-macos.txt
+          if [[ -f "$APP_PATH/Contents/MacOS/binglish" ]]; then
+            shasum -a 256 "$APP_PATH/Contents/MacOS/binglish" | awk '{print $1"  binglish"}' >> dist/checksums-macos.txt
+          else
+            BIN="$(find dist -type f -name binglish -perm -111 | head -1 || true)"
+            if [[ -n "$BIN" ]]; then
+              shasum -a 256 "$BIN" | awk '{print $1"  binglish"}' >> dist/checksums-macos.txt
+            fi
+          fi
+          shasum -a 256 dist/binglish-macos.zip | awk '{print $1"  binglish-macos.zip"}' >> dist/checksums-macos.txt
+          cat dist/checksums-macos.txt
 
       - uses: actions/upload-artifact@v4
         with:
           name: macos-build
           path: |
-            dist/binglish
+            dist/binglish-macos.zip
             dist/checksums-macos.txt
           if-no-files-found: warn
 
@@ -122,7 +162,7 @@ jobs:
           files: |
             artifacts/binglish.exe
             artifacts/checksums.txt
-            artifacts-mac/binglish
+            artifacts-mac/binglish-macos.zip
             artifacts-mac/checksums-macos.txt
           body: |
             ## 下载
@@ -130,8 +170,9 @@ jobs:
             | 文件 | 说明 |
             |---|---|
             | `binglish.exe` | Windows 便携版 |
-            | `checksums.txt` | SHA256 |
-            | `binglish` | macOS 构建（未公证，可能需右键打开） |
+            | `checksums.txt` | Windows SHA256 |
+            | `binglish-macos.zip` | macOS `.app`（onedir，未公证） |
+            | `checksums-macos.txt` | macOS SHA256 |
 
             ## 校验（Windows）
 
@@ -140,6 +181,12 @@ jobs:
             ```
 
             与 `checksums.txt` 一致后再运行。
+
+            ## 安装（macOS）
+
+            1. 解压 `binglish-macos.zip`，将 `binglish.app` 拖入「应用程序」
+            2. 未公证包首次打开：右键 → 打开，或
+               `xattr -dr com.apple.quarantine /Applications/binglish.app`
 
             ## 双轨更新
 

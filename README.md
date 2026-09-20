@@ -19,65 +19,75 @@
 
 ## 或 自行打包（Windows）
 
-```Bash
+在任意目录克隆后进入**仓库根目录**（含 `build.bat`、`binglish` 包的目录）：
+
+```PowerShell
 git clone https://github.com/klemperer/binglish/
 cd binglish
 python -m venv .venv
-.venv\Scripts\activate
+.\.venv\Scripts\Activate.ps1
 pip install -r requirements.txt pyinstaller
-build.bat
+.\build.bat
 ```
 
-打包产物在 `dist\binglish.exe`。也可直接运行源码（需图形会话）：
+打包产物在 `dist\binglish.exe`。
 
-```Bash
-python -m binglish
+### 源码运行（Windows）
+
+需图形会话。推荐在仓库根目录用 venv 直接跑包入口：
+
+```PowerShell
+cd binglish
+.\.venv\Scripts\python.exe -m binglish
 ```
+
+若 Python 找不到包，可显式指定仓库根目录为包路径后再运行：
+
+```PowerShell
+cd binglish
+$env:PYTHONPATH = (Get-Location).Path
+.\.venv\Scripts\python.exe -m binglish.app
+```
+
+说明：源码运行时托盘菜单通常没有完整的「检查更新」（打包后的 exe 才有）；仍可点「前往 GitHub Releases」。
 
 ## 运行（Windows）
 
-双击binglish.exe（如自行打包，可在项目下dist目录中找到该文件）即可运行，无需安装。程序运行后将最小化至右侧任务栏中，可在右键菜单中选择开机自动运行。
+双击 `binglish.exe`（自行打包时在项目 `dist` 目录）即可，无需安装。程序运行后最小化至任务栏托盘，可在右键菜单中选择开机自动运行。
 
-也可以在命令行中执行以下命令以运行（不推荐，“检查更新”功能不可用）：
-
-```Bash
-python -m binglish
-```
+命令行源码运行（不推荐，检查更新受限）见上文「源码运行（Windows）」。
 
 ## 下载已编译程序（macOS）
 
-[Github Releases](https://github.com/klemperer/binglish/releases/latest)（macOS 构建若未公证，首次打开需右键 → 打开，或 `xattr -dr com.apple.quarantine`）
-
-## 或 自行打包（macOS）
-
-在 Mac 上执行（**必须在 macOS 本机**，不能在 Windows 上打包 Mac 版）：
-
-```Bash
-cd /Users/xiao/binglish-next/binglish
-chmod +x build_macos.sh
-./build_macos.sh
-```
-
-产物为 `dist/binglish.app`（onedir，适合发布）。程序会：
-
-1. 安装依赖（含 `pyobjc-core`、`pyobjc-framework-Cocoa`）
-2. 跑测试（失败则中止打包）
-3. 用 PyInstaller 打包，并带上 macOS 托盘子进程所需的 hidden imports
-
-发布到 GitHub Release 前：
-
-```Bash
-ditto -c -k --sequesterRsrc --keepParent dist/binglish.app dist/binglish-macos.zip
-shasum -a 256 dist/binglish-macos.zip
-```
-
-未公证的包，用户首次打开需：
+[Github Releases](https://github.com/klemperer/binglish/releases/latest) 提供 macOS 构建（通常为 `binglish-macos.zip`，内含 `.app`）。若未公证，首次打开需右键 → 打开，或：
 
 ```Bash
 xattr -dr com.apple.quarantine /Applications/binglish.app
 ```
 
-或右键 →「打开」。
+## 或 自行打包（macOS）
+
+**必须在 macOS 本机打包**（不能在 Windows 上交叉打包 Mac 版）。在仓库根目录：
+
+```Bash
+git clone https://github.com/klemperer/binglish/
+cd binglish
+chmod +x build_macos.sh
+./build_macos.sh
+```
+
+产物为 `dist/binglish.app`（onedir，适合发布）。脚本会：
+
+1. 安装依赖（含 `pyobjc-core`、`pyobjc-framework-Cocoa`）
+2. 跑测试（失败则中止打包）
+3. 用 PyInstaller 打包，并带上 macOS 托盘子进程所需的 hidden imports
+
+发布到 GitHub Release 前可自行压缩：
+
+```Bash
+ditto -c -k --sequesterRsrc --keepParent dist/binglish.app dist/binglish-macos.zip
+shasum -a 256 dist/binglish-macos.zip
+```
 
 本地自测：
 
@@ -87,9 +97,41 @@ open dist/binglish.app
 ./dist/binglish.app/Contents/MacOS/binglish
 ```
 
+CI（`.github/workflows/release.yml`）在打 tag 时使用的 macOS 打包参数与 `build_macos.sh` 对齐（pyobjc + hidden imports + onedir `.app`）。
+
+### 源码运行（macOS）
+
+在仓库根目录：
+
+```Bash
+git clone https://github.com/klemperer/binglish/
+cd binglish
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt pyobjc-core pyobjc-framework-Cocoa
+PYTHONPATH="$PWD" ./.venv/bin/python -m binglish
+# 等价于
+PYTHONPATH="$PWD" ./.venv/bin/python -m binglish.app
+```
+
+### macOS 托盘子进程（架构说明）
+
+macOS 上系统托盘（pystray / AppKit）要求在**进程主线程**跑事件循环；若与 Tk 的 `mainloop` 混在同一进程，容易出现 AppKit 与 Python GIL 冲突导致崩溃。
+
+因此 macOS 运行时采用双进程：
+
+| 进程 | 职责 |
+|------|------|
+| 父进程 | 仅 Tk：对话框、休息/历史覆盖层、小游戏、壁纸与调度 |
+| 子进程 | 仅托盘：在 `binglish.ui.tray_proc` 中运行 pystray / AppKit |
+
+托盘菜单点击通过进程间队列通知父进程，再在 Tk 主线程执行。打包时必须把子进程入口及 `pystray._darwin`、PyObjC 等一并打进产物（见 `build_macos.sh` 与 `release.yml`）。
+
+Windows **不**使用该子进程模型：托盘与 Tk 同进程即可，行为与旧版一致。
+
 ## 运行（macOS）
 
-运行 `dist/binglish.app` 即可，无需安装。程序运行后将最小化至菜单栏托盘，可在右键菜单中选择开机自动运行。
+运行 `dist/binglish.app`（解压 zip 后可拖到「应用程序」）即可，无需安装。程序运行后图标出现在菜单栏托盘，可在右键菜单中选择开机自动运行。
 
 ## 右键菜单说明
 
