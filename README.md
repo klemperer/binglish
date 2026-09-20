@@ -35,10 +35,6 @@
 
 > 安装后约每 3 小时自动更换 Bing 壁纸并展示单词。更多打包、源码运行与菜单说明见下文。
 
-## 下载已编译程序（Windows）
-
-[Github Releases（推荐，含校验文件）](https://github.com/klemperer/binglish/releases/latest) 或者 [备用下载地址](https://ss.blueforge.org/bing/binglish.exe)
-
 ## 或 自行打包（Windows）
 
 在任意目录克隆后进入**仓库根目录**（含 `build.bat`、`binglish` 包的目录）：
