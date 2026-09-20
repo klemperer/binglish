@@ -17,6 +17,7 @@ from binglish.games.share import (
 )
 from binglish.games.sounds import play_game_sound
 from binglish.services import game_data as gd
+from binglish.ui import theme
 
 log = logging.getLogger(__name__)
 
@@ -25,7 +26,7 @@ CELL_WORD = "#D6EAF8"
 CELL_CURRENT = "#85C1E9"
 CLUE_NORMAL_FG = "white"
 CLUE_ACTIVE_FG = COLOR_GOLD
-DIRECTION_FONT = ("Microsoft YaHei", 12, "bold")
+DIRECTION_FONT = theme.ui_font(12, "bold")
 
 
 def _spacing_fix(text: str) -> str:
@@ -41,12 +42,14 @@ def launch(
     game_data: dict,
     on_exit,
     timer_var: tk.StringVar | None = None,
+    add_timer_penalty=None,
+    on_game_end=None,
 ) -> None:
     container = tk.Frame(parent, bg=COLOR_BG)
     container.place(relx=0.5, rely=0.50, anchor="center")
 
     result_msg = tk.Label(
-        parent, text="", font=("Microsoft YaHei", 24, "bold"), bg=COLOR_BG
+        parent, text="", font=theme.ui_font(24, "bold"), bg=COLOR_BG
     )
     result_msg.place(relx=0.5, rely=0.1, anchor="center")
 
@@ -72,15 +75,15 @@ def launch(
     tk.Label(
         container,
         text="在网格中填入正确的字母，使水平和垂直方向的单词都能吻合线索。",
-        font=("Microsoft YaHei", 13),
+        font=theme.ui_font(13),
         fg=COLOR_MUTED,
         bg=COLOR_BG,
     ).pack(pady=(0, 8))
 
-    tk.Button(
+    theme.make_button(
         parent,
         text="退出游戏 (Esc)",
-        font=("Microsoft YaHei", 11),
+        font=theme.ui_font(11),
         command=on_exit,
         bg="#E74C3C",
         fg="white",
@@ -98,7 +101,7 @@ def launch(
             "Tab / Shift+Tab 切换未完成词；空格或回车切换横/纵；"
             "点击线索跳转并高亮该词。"
         ),
-        font=("Microsoft YaHei", 10, "italic"),
+        font=theme.ui_font(10, "italic"),
         fg="#7F8C8D",
         bg=COLOR_BG,
         wraplength=900,
@@ -117,10 +120,10 @@ def launch(
             result_msg.config(text="无法获取字谜数据，请检查网络", fg="#E74C3C")
             return
 
-        tk.Button(
+        theme.make_button(
             parent,
             text="💡 提示",
-            font=("Microsoft YaHei", 11),
+            font=theme.ui_font(11),
             command=lambda: give_hint(),
             bg="#9B59B6",
             fg="white",
@@ -139,25 +142,18 @@ def launch(
         right.pack(side="left", padx=8, fill="y")
 
         hint_holder = tk.Frame(container, bg=COLOR_BG)
-        hint_holder.pack(pady=(2, 6))
+        hint_holder.pack(pady=(2, 6), fill="x")
         penalty_lbl = tk.Label(
             hint_holder,
             text="",
-            font=("Microsoft YaHei", 11, "bold"),
+            font=theme.ui_font(11, "bold"),
             fg="#E74C3C",
             bg=COLOR_BG,
         )
         penalty_lbl.pack()
-        hint_display = tk.Message(
-            hint_holder,
-            text="",
-            font=("Microsoft YaHei", 11),
-            fg="#A9DFBF",
-            bg=COLOR_BG,
-            justify="left",
-            width=760,
-        )
-        hint_display.pack()
+        # One column per word completed by the latest letter (Across+Down side by side).
+        hint_row = tk.Frame(hint_holder, bg=COLOR_BG)
+        hint_row.pack(fill="x", padx=8)
 
         valid_cells: dict[cl.Coord, str] = {}
         num_across: dict[cl.Coord, int] = {}
@@ -193,8 +189,6 @@ def launch(
         hinted_cells: set[cl.Coord] = set()
         locked_cells: set[cl.Coord] = set()
         completed_word_ids: set[str] = set()
-        display_queue: list[dict] = []
-        display_timer = [None]
         active_direction = ["Across"]
         current_cell: list[cl.Coord | None] = [None]
         current_word: list[dict | None] = [None]
@@ -228,9 +222,9 @@ def launch(
             )
             for wid, lbl in clue_widgets.items():
                 if wid == active_id:
-                    lbl.config(fg=CLUE_ACTIVE_FG, font=("Microsoft YaHei", 11, "bold"))
+                    lbl.config(fg=CLUE_ACTIVE_FG, font=theme.ui_font(11, "bold"))
                 else:
-                    lbl.config(fg=CLUE_NORMAL_FG, font=("Microsoft YaHei", 11))
+                    lbl.config(fg=CLUE_NORMAL_FG, font=theme.ui_font(11))
 
         def refresh_highlights() -> None:
             word = current_word[0]
@@ -263,29 +257,35 @@ def launch(
                 word = cl.word_at(all_words, coord, cl.other_direction(active_direction[0]))
             current_cell[0] = coord
             set_current_word(word)
-            entry_widgets[coord].focus_set()
+            theme.focus_widget(entry_widgets[coord], delay_ms=0)
 
-        def process_display_queue() -> None:
-            if not display_queue:
-                display_timer[0] = None
-                return
-            w = display_queue.pop(0)
+        def _format_word_def(w: dict) -> str:
             ans = w.get("answer", "")
             yb = _spacing_fix(w.get("yb", ""))
             mean = _spacing_fix(w.get("meaning", ""))
             exp = _spacing_fix(w.get("explanation", ""))
-            hint_display.config(
-                text=f"【单词】{ans}   【音标】{yb}\n【含义】{mean}\n【解析】{exp}"
-            )
-            if display_queue:
-                display_timer[0] = parent.after(5000, process_display_queue)
-            else:
-                display_timer[0] = None
+            return f"【单词】{ans}   【音标】{yb}\n【含义】{mean}\n【解析】{exp}"
 
-        def queue_display(w: dict) -> None:
-            display_queue.append(w)
-            if display_timer[0] is None:
-                process_display_queue()
+        def show_definitions(words: list[dict]) -> None:
+            """Show one or more completed-word explanations side by side."""
+            for child in hint_row.winfo_children():
+                try:
+                    child.destroy()
+                except tk.TclError:
+                    pass
+            if not words:
+                return
+            col_w = max(260, int(760 / len(words)) - 16)
+            for w in words:
+                tk.Message(
+                    hint_row,
+                    text=_format_word_def(w),
+                    font=theme.ui_font(11),
+                    fg="#A9DFBF",
+                    bg=COLOR_BG,
+                    justify="left",
+                    width=col_w,
+                ).pack(side="left", fill="x", expand=True, padx=6)
 
         def check_word_completion_at(cx: int, cy: int) -> None:
             newly = []
@@ -301,14 +301,18 @@ def launch(
                     newly.append((w, cells))
                     completed_word_ids.add(wid)
             newly.sort(key=lambda item: 0 if item[0]["dir"] == "Across" else 1)
+            completed_now = []
             for w, cells in newly:
-                queue_display(w)
+                completed_now.append(w)
                 for coord in cells:
                     if coord not in locked_cells:
                         locked_cells.add(coord)
                         e = entry_widgets[coord]
                         fg = "#9B59B6" if coord in hinted_cells else COLOR_BG
                         e.config(state="readonly", readonlybackground=CELL_NORMAL, fg=fg)
+            # A single cell can finish Across + Down together — show both columns.
+            if completed_now:
+                show_definitions(completed_now)
 
         def check_cw_win() -> None:
             nonlocal game_active
@@ -319,6 +323,11 @@ def launch(
                     return
             game_active = False
             play_game_sound("submit")
+            if on_game_end is not None:
+                try:
+                    on_game_end()
+                except Exception:
+                    pass
             if hint_count == 0:
                 rank_text = "Genius!"
             elif hint_count <= 2:
@@ -368,10 +377,10 @@ def launch(
                 else:
                     share_state["btn"].config(text="复制失败")
 
-            btn = tk.Button(
+            btn = theme.make_button(
                 parent,
                 text="复制成绩",
-                font=("Microsoft YaHei", 12, "bold"),
+                font=theme.ui_font(12, "bold"),
                 command=do_copy,
                 bg="#3498DB",
                 fg="white",
@@ -403,8 +412,14 @@ def launch(
                 e.config(fg="#9B59B6")
                 hinted_cells.add(coord)
                 modified.append(coord)
-            play_game_sound("click")
-            if timer_var is not None:
+            # Host owns the clock; hint penalty must go through add_timer_penalty
+            # or the next update_timer tick would overwrite a direct timer_var set.
+            if add_timer_penalty is not None:
+                try:
+                    add_timer_penalty(30)
+                except Exception:
+                    log.exception("add_timer_penalty failed")
+            elif timer_var is not None:
                 try:
                     cur = timer_var.get()
                     m = re.search(r"(\d+):(\d+)", cur)
@@ -443,7 +458,7 @@ def launch(
             current_cell[0] = target
             set_current_word(cw)
             if target in entry_widgets:
-                entry_widgets[target].focus_set()
+                theme.focus_widget(entry_widgets[target], delay_ms=50)
             refresh_highlights()
 
         tk.Label(
@@ -455,7 +470,7 @@ def launch(
             cw["dir"] = "Across"
             lbl = tk.Label(
                 left, text=f"{c['number']}. {c['clue']}",
-                font=("Microsoft YaHei", 11), fg=CLUE_NORMAL_FG, bg=COLOR_BG,
+                font=theme.ui_font(11), fg=CLUE_NORMAL_FG, bg=COLOR_BG,
                 wraplength=340, justify="left", cursor="hand2",
             )
             lbl.pack(anchor="w", pady=2)
@@ -471,7 +486,7 @@ def launch(
             cw["dir"] = "Down"
             lbl = tk.Label(
                 right, text=f"{c['number']}. {c['clue']}",
-                font=("Microsoft YaHei", 11), fg=CLUE_NORMAL_FG, bg=COLOR_BG,
+                font=theme.ui_font(11), fg=CLUE_NORMAL_FG, bg=COLOR_BG,
                 wraplength=340, justify="left", cursor="hand2",
             )
             lbl.pack(anchor="w", pady=2)
@@ -651,7 +666,7 @@ def launch(
             current_cell[0] = target
             set_current_word(first_word)
             if target in entry_widgets:
-                entry_widgets[target].focus_set()
+                theme.focus_widget(entry_widgets[target], delay_ms=50)
             refresh_highlights()
 
     threading.Thread(target=load, daemon=True).start()

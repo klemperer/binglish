@@ -10,6 +10,7 @@ from binglish.core.constants import COLOR_BG, COLOR_GOLD, COLOR_MUTED
 from binglish.games.share import copy_text, wordle_share_text
 from binglish.games.sounds import play_game_sound
 from binglish.services import game_data as gd
+from binglish.ui import theme
 
 log = logging.getLogger(__name__)
 
@@ -20,7 +21,7 @@ _COLOR_MAP = {
 }
 
 
-def launch(parent: tk.Misc, game_data: dict, on_exit) -> None:
+def launch(parent: tk.Misc, game_data: dict, on_exit, on_game_end=None) -> None:
     payload = game_data.get("wordle") or {}
     target = (payload.get("word") or "").lower()
     desc = payload.get("desc") or ""
@@ -28,7 +29,7 @@ def launch(parent: tk.Misc, game_data: dict, on_exit) -> None:
         tk.Label(
             parent,
             text="Wordle data unavailable",
-            font=("Microsoft YaHei", 16),
+            font=theme.ui_font(16),
             fg="#E74C3C",
             bg=COLOR_BG,
         ).pack(pady=40)
@@ -56,7 +57,7 @@ def launch(parent: tk.Misc, game_data: dict, on_exit) -> None:
     tk.Label(
         rule_f,
         text="规则：\n1. 目标：6次机会猜出单词\n2. 绿色：字母存在且位置正确\n3. 黄色：字母存在但位置错\n4. 灰色：字母不在答案中",
-        font=("Microsoft YaHei", 12),
+        font=theme.ui_font(12),
         fg=COLOR_MUTED,
         bg=COLOR_BG,
         justify="left",
@@ -66,11 +67,11 @@ def launch(parent: tk.Misc, game_data: dict, on_exit) -> None:
     container.place(relx=0.5, rely=0.55, anchor="center")
 
     result_msg = tk.Label(
-        parent, text="", font=("Microsoft YaHei", 24, "bold"), bg=COLOR_BG
+        parent, text="", font=theme.ui_font(24, "bold"), bg=COLOR_BG
     )
     result_msg.place(relx=0.5, rely=0.1, anchor="center")
     rank_lbl = tk.Label(
-        parent, text="", font=("Microsoft YaHei", 24, "bold"), fg=COLOR_GOLD, bg=COLOR_BG
+        parent, text="", font=theme.ui_font(24, "bold"), fg=COLOR_GOLD, bg=COLOR_BG
     )
 
     grid_f = tk.Frame(container, bg=COLOR_BG)
@@ -118,7 +119,7 @@ def launch(parent: tk.Misc, game_data: dict, on_exit) -> None:
     def_lbl = tk.Label(
         container,
         text="",
-        font=("Microsoft YaHei", 14),
+        font=theme.ui_font(14),
         fg="#A9DFBF",
         bg=COLOR_BG,
         wraplength=600,
@@ -142,10 +143,10 @@ def launch(parent: tk.Misc, game_data: dict, on_exit) -> None:
             else:
                 share_btn["widget"].config(text="复制失败")
 
-        btn = tk.Button(
+        btn = theme.make_button(
             parent,
             text="复制成绩",
-            font=("Microsoft YaHei", 12, "bold"),
+            font=theme.ui_font(12, "bold"),
             command=do_copy,
             bg="#3498DB",
             fg="white",
@@ -179,7 +180,7 @@ def launch(parent: tk.Misc, game_data: dict, on_exit) -> None:
                         result_msg.config(
                             text="无法连接验证服务器，请稍后重试",
                             fg="#E74C3C",
-                            font=("Microsoft YaHei", 18, "bold"),
+                            font=theme.ui_font(18, "bold"),
                         ),
                         unlock(),
                     ),
@@ -209,7 +210,6 @@ def launch(parent: tk.Misc, game_data: dict, on_exit) -> None:
                 nonlocal game_active, cur_guess, submitting
                 submitting = False
                 def_lbl.config(text=f"{g_str}: {valid_def}")
-                play_game_sound("submit")
                 row = len(guesses)
                 if row >= 6:
                     return
@@ -224,6 +224,12 @@ def launch(parent: tk.Misc, game_data: dict, on_exit) -> None:
                 cur_guess = []
                 if g_str == target:
                     game_active = False
+                    play_game_sound("submit")
+                    if on_game_end is not None:
+                        try:
+                            on_game_end()
+                        except Exception:
+                            pass
                     ranks = [
                         "Lucky you!",
                         "Genius!",
@@ -238,16 +244,25 @@ def launch(parent: tk.Misc, game_data: dict, on_exit) -> None:
                     _show_share_button(won=True)
                 elif len(guesses) >= 6:
                     game_active = False
+                    play_game_sound("submit")
+                    if on_game_end is not None:
+                        try:
+                            on_game_end()
+                        except Exception:
+                            pass
                     result_msg.config(text=f"Hard Luck! ({target.upper()})", fg="#E74C3C")
                     tk.Label(
                         container,
                         text=f"{target} {desc}",
-                        font=("Microsoft YaHei", 16, "bold"),
+                        font=theme.ui_font(16, "bold"),
                         fg=COLOR_GOLD,
                         bg=COLOR_BG,
                         wraplength=600,
                     ).pack(pady=20)
                     _show_share_button(won=False)
+                else:
+                    # Mid-game: keep the Enter / row-complete feedback sound.
+                    play_game_sound("submit")
 
             parent.after(0, apply_result)
 
@@ -261,28 +276,26 @@ def launch(parent: tk.Misc, game_data: dict, on_exit) -> None:
         if submitting:
             return "break"
         if event.keysym == "BackSpace" and cur_guess:
-            play_game_sound("click")
             cur_guess.pop()
         elif (
             len(event.char) == 1
             and event.char.isalpha()
             and len(cur_guess) < t_len
         ):
-            play_game_sound("click")
             cur_guess.append(event.char.upper())
         elif event.keysym == "Return":
             submit()
         paint_current_row()
         return "break"
 
-    parent.bind("<Key>", on_key)
+    theme.bind_keys(parent, on_key)
     # Keep focus on the host so letters always reach on_key
-    parent.focus_set()
+    theme.focus_widget(parent, delay_ms=50)
 
-    tk.Button(
+    theme.make_button(
         parent,
         text="Exit Game (Esc)",
-        font=("Microsoft YaHei", 11),
+        font=theme.ui_font(11),
         command=on_exit,
         bg="#E74C3C",
         fg="white",

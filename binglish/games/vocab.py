@@ -6,11 +6,15 @@ import threading
 import tkinter as tk
 
 from binglish.core.constants import COLOR_BG, COLOR_GOLD, COLOR_MUTED
-from binglish.games.sounds import play_game_sound
 from binglish.services import game_data as gd
+from binglish.ui import theme
+
+_WORD_OFF = "#34495E"
+_WORD_ON = "#27AE60"
+_WORD_TRAP = "#E74C3C"
 
 
-def launch(parent: tk.Misc, game_data: dict, on_exit, on_started=None) -> None:
+def launch(parent: tk.Misc, game_data: dict, on_exit, on_started=None, on_game_end=None) -> None:
     container = tk.Frame(parent, bg=COLOR_BG)
     container.place(relx=0.5, rely=0.50, anchor="center")
 
@@ -26,28 +30,30 @@ def launch(parent: tk.Misc, game_data: dict, on_exit, on_started=None) -> None:
     tk.Label(
         header,
         text="请如实勾选您“确定认识”的单词。注意：内含不存在的钓鱼假词，错选将面临严厉扣分！",
-        font=("Microsoft YaHei", 14),
+        font=theme.ui_font(14),
         fg="#E74C3C",
         bg=COLOR_BG,
     ).pack(pady=(0, 15))
 
     action_f = tk.Frame(header, bg=COLOR_BG)
     action_f.pack()
-    tk.Button(
+    theme.make_button(
         action_f,
         text="退出测试 (Esc)",
-        font=("Microsoft YaHei", 14),
+        font=theme.ui_font(14),
         command=on_exit,
         bg="#E74C3C",
         fg="white",
         relief="flat",
+        borderwidth=0,
+        highlightthickness=0,
         padx=20,
         pady=5,
         cursor="hand2",
     ).pack(side="right", padx=10)
 
     result_msg = tk.Label(
-        parent, text="", font=("Microsoft YaHei", 20, "bold"), bg=COLOR_BG
+        parent, text="", font=theme.ui_font(20, "bold"), bg=COLOR_BG
     )
     result_msg.place(relx=0.5, rely=0.12, anchor="center")
 
@@ -56,40 +62,40 @@ def launch(parent: tk.Misc, game_data: dict, on_exit, on_started=None) -> None:
     loading_lbl = tk.Label(
         grid_f,
         text="正在从服务器获取测试词库，请稍候...",
-        font=("Microsoft YaHei", 16),
+        font=theme.ui_font(16),
         fg=COLOR_MUTED,
         bg=COLOR_BG,
     )
     loading_lbl.pack(pady=50)
 
     selected_vars: dict[str, tuple] = {}
+    word_btns: dict[str, tk.Widget] = {}
     test_words: list[dict] = []
     game_active = True
-    submit_holder = {"btn": None}
+
+    def _disable_btn(btn) -> None:
+        try:
+            btn.config(state="disabled")
+        except tk.TclError:
+            pass
 
     def submit_vocab() -> None:
         nonlocal game_active
         if not game_active:
             return
-        selected = {
-            w for w, (var, _) in selected_vars.items() if var.get()
-        }
+        selected = {w for w, (var, _) in selected_vars.items() if var.get()}
         result = gd.vocab_score(test_words, selected)
-        for child in grid_f.winfo_children():
-            if isinstance(child, tk.Checkbutton):
-                word = child.cget("text")
-                info = selected_vars.get(word)
-                if not info:
-                    continue
-                var, w_info = info
-                if w_info.get("is_trap") and var.get():
-                    child.config(
-                        state="disabled",
-                        selectcolor="#E74C3C",
-                        disabledforeground="white",
-                    )
-                else:
-                    child.config(state="disabled", disabledforeground=COLOR_MUTED)
+        for word, (var, w_info) in selected_vars.items():
+            btn = word_btns.get(word)
+            if btn is None:
+                continue
+            if w_info.get("is_trap") and var.get():
+                btn.config(bg=_WORD_TRAP, fg="white")
+            elif var.get():
+                btn.config(bg=_WORD_ON, fg="white")
+            else:
+                btn.config(bg=_WORD_OFF, fg=COLOR_MUTED)
+            _disable_btn(btn)
 
         color = "#2ECC71" if result["traps"] == 0 else "#E67E22"
         trap_msg = (
@@ -104,22 +110,43 @@ def launch(parent: tk.Misc, game_data: dict, on_exit, on_started=None) -> None:
             ),
             fg=color,
         )
-        play_game_sound("submit")
         game_active = False
+        if on_game_end is not None:
+            try:
+                on_game_end()
+            except Exception:
+                pass
 
-    submit_btn = tk.Button(
+    def _toggle_word(word: str) -> None:
+        if not game_active:
+            return
+        info = selected_vars.get(word)
+        if not info:
+            return
+        var, _ = info
+        var.set(not var.get())
+        btn = word_btns.get(word)
+        if btn is None:
+            return
+        if var.get():
+            btn.config(bg=_WORD_ON, fg="white")
+        else:
+            btn.config(bg=_WORD_OFF, fg="white")
+
+    submit_btn = theme.make_button(
         action_f,
         text="✔ 选好了，提交",
-        font=("Microsoft YaHei", 14, "bold"),
+        font=theme.ui_font(14, "bold"),
         command=submit_vocab,
         bg="#2ECC71",
         fg="white",
         relief="flat",
+        borderwidth=0,
+        highlightthickness=0,
         padx=20,
         pady=5,
         cursor="hand2",
     )
-    submit_holder["btn"] = submit_btn
 
     def render_vocab_grid(words: list) -> None:
         nonlocal test_words
@@ -127,33 +154,40 @@ def launch(parent: tk.Misc, game_data: dict, on_exit, on_started=None) -> None:
         loading_lbl.pack_forget()
         submit_btn.pack(side="left", padx=10)
         cols = 8
+        word_btns.clear()
         for i, w_info in enumerate(test_words):
             word = w_info.get("word", "")
             var = tk.BooleanVar(value=False)
             selected_vars[word] = (var, w_info)
-            cb = tk.Checkbutton(
+            # Toggle Buttons (not Checkbutton): Aqua checkbuttons are unreliable
+            # for clicks when heavily restyled / inside fullscreen overlays.
+            btn = theme.make_button(
                 grid_f,
                 text=word,
-                variable=var,
                 font=("Helvetica", 13, "bold"),
-                indicatoron=False,
-                bg="#34495E",
+                command=lambda w=word: _toggle_word(w),
+                bg=_WORD_OFF,
                 fg="white",
-                selectcolor="#27AE60",
                 activebackground="#1ABC9C",
                 activeforeground="white",
                 relief="flat",
                 borderwidth=0,
+                highlightthickness=0,
                 cursor="hand2",
                 width=12,
+                padx=8,
                 pady=6,
             )
-            cb.grid(row=i // cols, column=i % cols, padx=6, pady=6)
+            word_btns[word] = btn
+            btn.grid(row=i // cols, column=i % cols, padx=6, pady=6)
 
     def load_vocab() -> None:
         words = gd.fetch_vocab_test()
-        parent.after(0, lambda: render_vocab_grid(words) if words else loading_lbl.config(
-            text="无法连接到服务器", fg="#E74C3C"
-        ))
+        parent.after(
+            0,
+            lambda: render_vocab_grid(words)
+            if words
+            else loading_lbl.config(text="无法连接到服务器", fg="#E74C3C"),
+        )
 
     threading.Thread(target=load_vocab, daemon=True).start()

@@ -9,9 +9,10 @@ import tkinter as tk
 from binglish.core.constants import COLOR_BG, COLOR_GOLD, COLOR_MUTED
 from binglish.games.sounds import play_game_sound
 from binglish.services.game_data import sentence_master_rank
+from binglish.ui import theme
 
 
-def launch(parent: tk.Misc, game_data: dict, on_exit) -> None:
+def launch(parent: tk.Misc, game_data: dict, on_exit, on_game_end=None) -> None:
     payload = game_data.get("shuffle") or {}
     raw_sentence = payload.get("en") or ""
     cn = payload.get("cn") or ""
@@ -19,7 +20,7 @@ def launch(parent: tk.Misc, game_data: dict, on_exit) -> None:
         tk.Label(
             parent,
             text="Sentence data unavailable",
-            font=("Microsoft YaHei", 16),
+            font=theme.ui_font(16),
             fg="#E74C3C",
             bg=COLOR_BG,
         ).pack(pady=40)
@@ -31,8 +32,8 @@ def launch(parent: tk.Misc, game_data: dict, on_exit) -> None:
     random.shuffle(shuffled_pool)
     tokens = re.findall(r"[\w']+|[^\w\s]", raw_sentence)
     user_order: list = [None] * len(words_only)
-    slot_btns: list[tk.Button] = []
-    pool_btns: dict[int, tk.Button] = {}
+    slot_btns: list = []
+    pool_btns: dict[int, object] = {}
     attempts_var = tk.IntVar(value=1)
     game_active = True
 
@@ -49,7 +50,7 @@ def launch(parent: tk.Misc, game_data: dict, on_exit) -> None:
     tk.Label(
         container,
         text="还原被打乱的句子，点击下方单词填入横线，点击横线上的单词重填。",
-        font=("Microsoft YaHei", 14),
+        font=theme.ui_font(14),
         fg=COLOR_MUTED,
         bg=COLOR_BG,
     ).pack(pady=(0, 10))
@@ -63,7 +64,7 @@ def launch(parent: tk.Misc, game_data: dict, on_exit) -> None:
     )
     attempts_lbl.place(relx=0.82, rely=0.02, anchor="ne")
     result_msg = tk.Label(
-        parent, text="", font=("Microsoft YaHei", 24, "bold"), bg=COLOR_BG
+        parent, text="", font=theme.ui_font(24, "bold"), bg=COLOR_BG
     )
     result_msg.place(relx=0.5, rely=0.1, anchor="center")
 
@@ -87,6 +88,11 @@ def launch(parent: tk.Misc, game_data: dict, on_exit) -> None:
 
         game_active = False
         play_game_sound("submit")
+        if on_game_end is not None:
+            try:
+                on_game_end()
+            except Exception:
+                pass
         for btn in slot_btns:
             btn.config(bg="#27AE60", state="disabled")
         for b in pool_btns.values():
@@ -96,7 +102,7 @@ def launch(parent: tk.Misc, game_data: dict, on_exit) -> None:
         tk.Label(
             container,
             text=cn,
-            font=("Microsoft YaHei", 14),
+            font=theme.ui_font(14),
             fg=COLOR_MUTED,
             bg=COLOR_BG,
             wraplength=800,
@@ -107,13 +113,13 @@ def launch(parent: tk.Misc, game_data: dict, on_exit) -> None:
             return
         for i in range(len(user_order)):
             if user_order[i] is None:
-                play_game_sound("click")
                 user_order[i] = obj
                 pool_btns[obj["id"]].pack_forget()
                 if obj["word"].lower() == words_only[i].lower():
                     slot_btns[i].config(text=obj["word"], fg="white", bg="#27AE60")
                 else:
-                    slot_btns[i].config(text=obj["word"], fg="white", bg=COLOR_BG)
+                    # Red so wrong vs correct vs empty stay distinct on macOS.
+                    slot_btns[i].config(text=obj["word"], fg="white", bg="#E74C3C")
                     attempts_var.set(attempts_var.get() + 1)
                     update_attempts_ui()
                 check_win()
@@ -124,10 +130,9 @@ def launch(parent: tk.Misc, game_data: dict, on_exit) -> None:
             return
         if user_order[idx]["word"].lower() == words_only[idx].lower():
             return
-        play_game_sound("click")
         obj = user_order[idx]
         user_order[idx] = None
-        slot_btns[idx].config(text="______", fg="#5D6D7E", bg=COLOR_BG)
+        slot_btns[idx].config(text="______", fg="#BDC3C7", bg="#34495E")
         pool_btns[obj["id"]].pack(side="left", padx=5, pady=5)
 
     slots_wrap = tk.Frame(container, bg=COLOR_BG)
@@ -144,13 +149,18 @@ def launch(parent: tk.Misc, game_data: dict, on_exit) -> None:
             row_chars = 0
         if re.match(r"[\w']+", t):
             curr = w_idx
-            btn = tk.Button(
+            # mac_native=False: tkmacosx paints a pill border on Aqua.
+            btn = theme.make_button(
                 current_row,
                 text="______",
                 font=("Helvetica", 16),
-                fg="#5D6D7E",
-                bg=COLOR_BG,
+                fg="#BDC3C7",
+                bg="#34495E",
                 relief="flat",
+                borderwidth=0,
+                highlightthickness=0,
+                padx=6,
+                pady=4,
                 command=lambda i=curr: on_slot_click(i),
             )
             btn.pack(side="left", padx=5)
@@ -177,7 +187,7 @@ def launch(parent: tk.Misc, game_data: dict, on_exit) -> None:
             pool_row = tk.Frame(pool_wrap, bg=COLOR_BG)
             pool_row.pack(pady=5)
             pool_chars = 0
-        b = tk.Button(
+        b = theme.make_button(
             pool_row,
             text=obj["word"],
             font=("Helvetica", 14),
@@ -191,10 +201,10 @@ def launch(parent: tk.Misc, game_data: dict, on_exit) -> None:
         pool_btns[obj["id"]] = b
         pool_chars += len(obj["word"]) + 4
 
-    tk.Button(
+    theme.make_button(
         parent,
         text="Exit Game (Esc)",
-        font=("Microsoft YaHei", 11),
+        font=theme.ui_font(11),
         command=on_exit,
         bg="#E74C3C",
         fg="white",

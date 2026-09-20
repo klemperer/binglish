@@ -21,6 +21,8 @@ dev = [
 ]
 mac = [
   "tkmacosx>=0.5",
+  "pyobjc-core>=9.0",
+  "pyobjc-framework-Cocoa>=9.0",
 ]
 
 [project.scripts]

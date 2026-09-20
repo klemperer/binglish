@@ -20,6 +20,7 @@ from binglish.core.constants import (
 from binglish.core.logging_setup import setup_logging
 from binglish.core.paths import resource_path
 from binglish.core.state import state
+from binglish.core.ui_thread import run_on_ui
 from binglish.platform import get_platform
 from binglish.services import music as music_svc
 from binglish.services import update as update_svc
@@ -129,7 +130,7 @@ def rest_monitor_loop() -> None:
                     log.info("fullscreen — defer rest reminder")
                 elif not state.is_overlay_showing and state.root is not None:
                     log.info("trigger rest overlay")
-                    state.root.after(0, _open_rest)
+                    run_on_ui(_open_rest)
         except Exception:
             log.exception("rest monitor error")
             time.sleep(10)
@@ -148,10 +149,7 @@ def _manual_update() -> None:
 
 def _manual_update_worker() -> None:
     result = update_svc.check_release_dual()
-    if state.root is not None:
-        state.root.after(0, _manual_update_ui, result)
-    else:
-        _manual_update_ui(result)
+    run_on_ui(_manual_update_ui, result)
 
 
 def _manual_update_ui(result: dict) -> None:
@@ -230,8 +228,7 @@ def _do_download_update(expected_hash) -> None:
         return
     if sys.platform.startswith("win"):
         update_svc.apply_windows_update(new_exe, Path(paths.executable_path()))
-        if state.root is not None:
-            state.root.after(100, tray._quit)
+        run_on_ui(tray._quit)
     else:
         log.warning("auto-apply not implemented for this OS: %s", new_exe)
 
@@ -274,27 +271,51 @@ def main() -> None:
     root = tk.Tk()
     root.withdraw()
     state.root = root
+    if sys.platform == "darwin":
+        # Prefer a real macOS CJK face for widgets that hardcode YaHei fallbacks.
+        try:
+            from binglish.ui.theme import CJK_FAMILY
+
+            root.option_add("*Font", f"{{{CJK_FAMILY}}} 13")
+        except Exception:
+            pass
+    from binglish.ui.ui_queue import start_pump
+
+    start_pump(root)
 
     icon_path = resource_path(ICON_FILENAME)
     if not icon_path.exists():
         log.error("icon not found: %s", icon_path)
         sys.exit(1)
 
-    from PIL import Image
-
-    image = Image.open(icon_path)
     tray.bind_jobs(
         wallpaper_job=update_wallpaper_job,
         check_update=_manual_update,
     )
-    icon = tray.run_tray(image)
 
-    threading.Thread(target=icon.run, daemon=True).start()
+    # Warm screen-size cache on the Tk main thread before workers start.
+    try:
+        adapter = _platform_adapter()
+        warm = getattr(adapter, "warm_screen_size", None)
+        if callable(warm):
+            warm(root)
+        else:
+            adapter.screen_size()
+    except Exception:
+        log.exception("screen size warm-up failed")
+
+    icon = tray.run_tray(icon_path)
+
     threading.Thread(target=run_scheduler, daemon=True).start()
     threading.Thread(target=rest_monitor_loop, daemon=True).start()
 
     log.info("running in tray; look for the icon near the clock")
     try:
+        if sys.platform == "darwin":
+            # Tray icon lives in a child process; this process is Tk-only.
+            log.info("macOS: Tk mainloop in parent; tray in child process")
+        else:
+            threading.Thread(target=icon.run, daemon=True).start()
         root.mainloop()
     finally:
         from binglish.core.single_instance import release_single_instance

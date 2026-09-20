@@ -8,7 +8,9 @@ import tkinter as tk
 from tkinter import messagebox
 
 from binglish.core.state import state
+from binglish.core.ui_thread import run_on_ui
 from binglish.services import history as history_svc
+from binglish.ui import theme
 
 log = logging.getLogger(__name__)
 
@@ -20,14 +22,8 @@ def open_history_overlay(events: list, date_str: str) -> None:
         return
 
     color = state.overlay_color
-    overlay = tk.Toplevel(state.root)
-    overlay.title("On This Day")
+    overlay = theme.make_overlay(state.root, "On This Day", color=color, fade=True)
     w = state.root.winfo_screenwidth()
-    h = state.root.winfo_screenheight()
-    overlay.geometry(f"{w}x{h}+0+0")
-    overlay.overrideredirect(True)
-    overlay.attributes("-topmost", True, "-alpha", 0.0)
-    overlay.configure(bg=color)
 
     main = tk.Frame(overlay, bg=color)
     main.pack(expand=True, fill="both", padx=50, pady=50)
@@ -41,7 +37,7 @@ def open_history_overlay(events: list, date_str: str) -> None:
     tk.Label(
         main,
         text="↓ Use mouse wheel to scroll / 使用滚轮查看更多 ↓",
-        font=("Microsoft YaHei", 12),
+        font=theme.ui_font(12),
         fg="#7F8C8D",
         bg=color,
     ).pack(pady=(0, 20))
@@ -50,12 +46,19 @@ def open_history_overlay(events: list, date_str: str) -> None:
     holder.pack(expand=True, fill="both")
     canvas = tk.Canvas(holder, bg=color, highlightthickness=0)
     scrollable = tk.Frame(canvas, bg=color)
-    scrollable.bind(
-        "<Configure>",
-        lambda e: canvas.configure(scrollregion=canvas.bbox("all")),
-    )
-    canvas.create_window((w // 2 - 50), 0, window=scrollable, anchor="n")
+    canvas.create_window((w // 2 - 50), 0, window=scrollable, anchor="n", tags="content")
     canvas.pack(side="left", fill="both", expand=True)
+
+    def _sync_scrollregion(_e=None) -> None:
+        try:
+            canvas.configure(scrollregion=canvas.bbox("all"))
+            # Ensure window item fills canvas width for hit-testing / wheel.
+            canvas.itemconfigure("content", width=max(canvas.winfo_width() - 2, 1))
+        except tk.TclError:
+            pass
+
+    scrollable.bind("<Configure>", _sync_scrollregion)
+    canvas.bind("<Configure>", _sync_scrollregion)
 
     for event in events:
         frame = tk.Frame(scrollable, bg=color)
@@ -73,7 +76,7 @@ def open_history_overlay(events: list, date_str: str) -> None:
         tk.Label(
             frame,
             text=event.get("text_cn", ""),
-            font=("Microsoft YaHei", 16),
+            font=theme.ui_font(16),
             fg="#95A5A6",
             bg=color,
             wraplength=w - 200,
@@ -81,25 +84,57 @@ def open_history_overlay(events: list, date_str: str) -> None:
         ).pack(anchor="w", pady=(5, 0))
 
     def on_wheel(event) -> None:
-        canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+        # Windows: delta is ±120 per notch.
+        # macOS Tk Aqua: often ±1 (or small ints); Button-4/5 on some setups.
+        if getattr(event, "num", None) == 4:
+            canvas.yview_scroll(-1, "units")
+            return
+        if getattr(event, "num", None) == 5:
+            canvas.yview_scroll(1, "units")
+            return
+        delta = getattr(event, "delta", 0) or 0
+        if delta == 0:
+            return
+        units = (
+            int(-1 * (delta / 120)) if abs(delta) >= 120 else (-1 if delta > 0 else 1)
+        )
+        if units:
+            canvas.yview_scroll(units, "units")
 
-    canvas.bind_all("<MouseWheel>", on_wheel)
+    def _bind_wheel(widget) -> None:
+        for seq in ("<MouseWheel>", "<Button-4>", "<Button-5>"):
+            try:
+                widget.bind(seq, on_wheel)
+            except tk.TclError:
+                pass
+
+    for w in (canvas, scrollable, holder, overlay, main):
+        _bind_wheel(w)
+    for seq in ("<MouseWheel>", "<Button-4>", "<Button-5>"):
+        try:
+            canvas.bind_all(seq, on_wheel)
+        except tk.TclError:
+            pass
 
     close_f = tk.Frame(overlay, bg=color)
     close_f.pack(side="bottom", pady=40)
 
     def on_close(_event=None) -> None:
-        canvas.unbind_all("<MouseWheel>")
+        for seq in ("<MouseWheel>", "<Button-4>", "<Button-5>"):
+            try:
+                canvas.unbind_all(seq)
+            except tk.TclError:
+                pass
         state.release_overlay()
         try:
             overlay.destroy()
         except tk.TclError:
             pass
 
-    tk.Button(
+    theme.make_button(
         close_f,
         text="我知道了 (Close)",
-        font=("Microsoft YaHei", 14),
+        font=theme.ui_font(14),
         command=on_close,
         bg="white",
         fg=color,
@@ -115,13 +150,19 @@ def open_history_overlay(events: list, date_str: str) -> None:
     alpha_step = target / (1000 / step)
 
     def fade(current=0.0) -> None:
+        if theme.IS_MAC:
+            try:
+                overlay.attributes("-alpha", target)
+            except tk.TclError:
+                pass
+            return
         if current < target:
             new = min(target, current + alpha_step)
             overlay.attributes("-alpha", new)
             overlay.after(step, fade, new)
 
     fade(0)
-    overlay.focus_force()
+    theme.focus_widget(overlay, delay_ms=50)
 
 
 def open_history_from_menu() -> None:
@@ -141,6 +182,6 @@ def open_history_from_menu() -> None:
                     "暂无相关历史内容。\nNo historical events found for today.",
                 )
 
-        state.root.after(0, apply)
+        run_on_ui(apply)
 
     threading.Thread(target=worker, daemon=True).start()

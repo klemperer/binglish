@@ -9,7 +9,9 @@ import tkinter as tk
 
 from binglish.core.quotes import REST_QUOTES
 from binglish.core.state import state
+from binglish.core.ui_thread import run_on_ui
 from binglish.services import history as history_svc
+from binglish.ui import theme
 
 log = logging.getLogger(__name__)
 
@@ -46,14 +48,8 @@ def open_rest_overlay() -> None:
     lock_seconds = state.rest_lock_seconds
     quote_en, quote_cn = random.choice(REST_QUOTES)
 
-    overlay = tk.Toplevel(state.root)
-    overlay.title("Time to Rest")
+    overlay = theme.make_overlay(state.root, "Time to Rest", color=color, fade=True)
     w = state.root.winfo_screenwidth()
-    h = state.root.winfo_screenheight()
-    overlay.geometry(f"{w}x{h}+0+0")
-    overlay.overrideredirect(True)
-    overlay.attributes("-topmost", True, "-alpha", 0.0)
-    overlay.configure(bg=color)
 
     container = tk.Frame(overlay, bg=color)
     container.pack(expand=True, fill="both")
@@ -72,7 +68,7 @@ def open_rest_overlay() -> None:
     lbl_fact_cn = tk.Label(
         bottom,
         text="正在获取冷知识...",
-        font=("Microsoft YaHei", 12),
+        font=theme.ui_font(12),
         fg="#7F8C8D",
         bg=color,
         wraplength=w - 200,
@@ -92,7 +88,7 @@ def open_rest_overlay() -> None:
     tk.Label(
         center,
         text=quote_cn,
-        font=("Microsoft YaHei", 24),
+        font=theme.ui_font(24),
         fg="#BDC3C7",
         bg=color,
         wraplength=w - 100,
@@ -105,7 +101,7 @@ def open_rest_overlay() -> None:
         lbl_word = tk.Label(
             center,
             text=hint,
-            font=("Microsoft YaHei", 18, "bold"),
+            font=theme.ui_font(18, "bold"),
             fg="#A9DFBF",
             bg=color,
             wraplength=w - 100,
@@ -125,10 +121,10 @@ def open_rest_overlay() -> None:
 
         tray.refresh_menu()
 
-    btn = tk.Button(
+    btn = theme.make_button(
         center,
         textvariable=btn_text,
-        font=("Microsoft YaHei", 14),
+        font=theme.ui_font(14),
         command=on_close,
         state="disabled",
         bg="#ECF0F1",
@@ -151,7 +147,7 @@ def open_rest_overlay() -> None:
             else:
                 lbl_fact_cn.config(text="")
 
-        overlay.after(0, apply)
+        run_on_ui(apply)
 
     threading.Thread(target=fetch_fact, daemon=True).start()
 
@@ -174,6 +170,13 @@ def open_rest_overlay() -> None:
             overlay.focus_force()
 
     def fade_in(current=0.0) -> None:
+        if theme.IS_MAC:
+            try:
+                overlay.attributes("-alpha", target_alpha)
+            except tk.TclError:
+                pass
+            start_countdown()
+            return
         if current < target_alpha:
             new = min(target_alpha, current + alpha_step)
             overlay.attributes("-alpha", new)
@@ -182,4 +185,4 @@ def open_rest_overlay() -> None:
             start_countdown()
 
     fade_in(0)
-    overlay.focus_force()
+    theme.focus_widget(overlay, delay_ms=50)

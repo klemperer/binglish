@@ -50,31 +50,46 @@ python -m binglish
 
 ## 或 自行打包（macOS）
 
-在 Mac 上执行（仓库根目录）：
+在 Mac 上执行（**必须在 macOS 本机**，不能在 Windows 上打包 Mac 版）：
 
 ```Bash
-git clone https://github.com/klemperer/binglish/
-cd binglish
+cd /Users/xiao/binglish-next/binglish
 chmod +x build_macos.sh
 ./build_macos.sh
 ```
 
-产物为 `dist/binglish`。手动打包等价命令：
+产物为 `dist/binglish.app`（onedir，适合发布）。程序会：
+
+1. 安装依赖（含 `pyobjc-core`、`pyobjc-framework-Cocoa`）
+2. 跑测试（失败则中止打包）
+3. 用 PyInstaller 打包，并带上 macOS 托盘子进程所需的 hidden imports
+
+发布到 GitHub Release 前：
 
 ```Bash
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt pyinstaller tkmacosx
-pyinstaller --onefile --windowed --name binglish \
-  --icon assets/binglish.ico \
-  --add-data "assets/binglish.ico:." \
-  --paths . \
-  binglish/app.py
+ditto -c -k --sequesterRsrc --keepParent dist/binglish.app dist/binglish-macos.zip
+shasum -a 256 dist/binglish-macos.zip
+```
+
+未公证的包，用户首次打开需：
+
+```Bash
+xattr -dr com.apple.quarantine /Applications/binglish.app
+```
+
+或右键 →「打开」。
+
+本地自测：
+
+```Bash
+open dist/binglish.app
+# 或
+./dist/binglish.app/Contents/MacOS/binglish
 ```
 
 ## 运行（macOS）
 
-运行 `dist/binglish`（或 `dist/binglish.app`，若以 .app 方式打包）即可，无需安装。程序运行后将最小化至右侧任务栏中，可在右键菜单中选择开机自动运行。
+运行 `dist/binglish.app` 即可，无需安装。程序运行后将最小化至菜单栏托盘，可在右键菜单中选择开机自动运行。
 
 ## 右键菜单说明
 

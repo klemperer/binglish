@@ -16,6 +16,7 @@ from binglish.core.constants import (
 )
 from binglish.core.state import state
 from binglish.core.ui_thread import run_on_ui
+from binglish.ui import theme
 
 log = logging.getLogger(__name__)
 
@@ -27,8 +28,7 @@ def show_about() -> None:
 def _show_about() -> None:
     messagebox.showinfo(
         "关于 Binglish",
-        f"Binglish桌面英语 {VERSION}\n{PROJECT_URL}\n\n"
-        "重构版：模块化架构，共享业务逻辑。",
+        f"Binglish桌面英语 {VERSION}\n{PROJECT_URL}",
     )
 
 
@@ -71,9 +71,9 @@ def _show_music_description() -> None:
         text=desc,
         width=600,
         justify="left",
-        font=("TkDefaultFont", 15),
+        font=theme.ui_font(15),
     ).pack(padx=10, pady=(10, 5))
-    tk.Button(win, text="关闭", command=win.destroy).pack(pady=(5, 10))
+    theme.make_button(win, text="关闭", command=win.destroy).pack(pady=(5, 10))
 
 
 def show_share_qr() -> None:
